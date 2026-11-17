@@ -13,6 +13,7 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.20.6/dist/leaflet-geoman.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js"></script>
 <style>
   :root{
     --bg: rgba(255,255,255,0.88);
@@ -201,6 +202,105 @@
     .marker-icon.marker-icon-middle{width:16px !important;height:16px !important;margin-left:-8px !important;margin-top:-8px !important;opacity:.9}
   }
 
+
+  /* ================= Hunting & scouting ================= */
+  #huntSheet, #logSheet{top:calc(12px + var(--sat));right:calc(64px + var(--sar));width:340px;max-height:calc(100% - 90px)}
+  .hp{position:relative;width:34px;height:34px}
+  .hp-dot{position:absolute;inset:0;border-radius:50%;background:var(--c);border:2.5px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.45);display:grid;place-items:center;font-size:17px;line-height:1;z-index:2}
+  .hp.sel .hp-dot{box-shadow:0 0 0 3px var(--accent),0 1px 4px rgba(0,0,0,0.45)}
+  .hp.good .hp-dot{box-shadow:0 0 0 3px #2fbf71,0 1px 4px rgba(0,0,0,0.45)}
+  .hp.bad .hp-dot{box-shadow:0 0 0 3px #e53935,0 1px 4px rgba(0,0,0,0.45)}
+  .hp.sel.good .hp-dot,.hp.sel.bad .hp-dot{box-shadow:0 0 0 3px var(--accent),0 0 0 6px #fff,0 1px 4px rgba(0,0,0,0.45)}
+  .hp-arrow{position:absolute;left:50%;top:50%;width:0;height:0;z-index:1;pointer-events:none}
+  .hp-arrow svg{position:absolute;left:-9px;top:-44px;width:18px;height:30px;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,0.6))}
+  .rt-arrow svg{display:block;filter:drop-shadow(0 0 1.5px rgba(255,255,255,0.9))}
+  .leaflet-tooltip.hunt-label{background:rgba(255,255,255,0.92);border:none;border-radius:6px;padding:1px 6px;font-weight:600;font-size:11.5px;box-shadow:0 1px 3px rgba(0,0,0,0.3);color:#1c1c1e}
+  .leaflet-tooltip.hunt-label::before{display:none}
+
+  #windChip{position:absolute;z-index:998;top:calc(12px + var(--sat));left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:6px 12px 6px 8px;cursor:pointer;font-size:13px;white-space:nowrap;border-radius:22px}
+  #windChip .wa{width:28px;height:28px;border-radius:50%;background:var(--accent-soft);display:grid;place-items:center}
+  #windChip .wa svg{width:20px;height:20px;transition:transform .3s}
+  #windChip b{font-weight:650}
+  #windChip .sub{color:var(--ink-3);font-size:11.5px}
+  body.exporting #windChip{display:none}
+
+  .wx-now{display:flex;gap:14px;align-items:center;margin:8px 0 4px}
+  .wx-temp{font-size:34px;font-weight:600;letter-spacing:-0.02em;line-height:1}
+  .wx-desc{font-size:13px;color:var(--ink-2);line-height:1.4}
+  .wx-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:12.5px;color:var(--ink-2);margin:8px 0}
+  .wx-grid b{color:var(--ink);font-weight:600}
+  .wind-big{display:flex;align-items:center;gap:10px;background:rgba(118,118,128,0.08);border-radius:12px;padding:8px 10px;margin:6px 0}
+  .wind-big svg{width:40px;height:40px;flex:none;transition:transform .3s}
+  .wind-big .t{font-size:15px;font-weight:650}
+  .wind-big .s{font-size:12px;color:var(--ink-2)}
+  .hours{display:flex;gap:4px;overflow-x:auto;padding:4px 0 8px;scrollbar-width:thin;-webkit-overflow-scrolling:touch}
+  .hr{flex:none;width:52px;border-radius:10px;padding:6px 2px;text-align:center;font-size:11px;color:var(--ink-2);cursor:pointer;border:1px solid transparent;background:rgba(118,118,128,0.06)}
+  .hr.on{border-color:var(--accent);background:var(--accent-soft)}
+  .hr.legal{background:rgba(47,191,113,0.10)}
+  .hr.on.legal{background:var(--accent-soft)}
+  .hr b{display:block;color:var(--ink);font-size:12px;font-weight:600}
+  .hr svg{width:16px;height:16px;display:block;margin:3px auto}
+  .hr .day{font-size:9.5px;color:var(--ink-3)}
+  .days{width:100%;border-collapse:collapse;font-size:12.5px}
+  .days td{padding:6px 2px;border-bottom:1px solid var(--line);white-space:nowrap}
+  .days tr{cursor:pointer}
+  .days tr.on td{background:var(--accent-soft)}
+  .days svg{width:14px;height:14px;vertical-align:-2px}
+  .sun-grid{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:12.5px;color:var(--ink-2)}
+  .sun-grid b{color:var(--ink);font-weight:600}
+  .moon-row{display:flex;align-items:center;gap:10px;margin:6px 0}
+  .moon-row .mi{font-size:30px;line-height:1}
+  .sol{font-size:12.5px;line-height:1.7}
+  .sol .maj{color:var(--accent);font-weight:650}
+  .sol .now{background:#fff3c4;border-radius:4px;padding:0 3px}
+  .spark{width:100%;height:46px;display:block}
+
+  .scout-chips{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;padding:2px}
+  .scout-chips::-webkit-scrollbar{display:none}
+  .chip{flex:none;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:62px;padding:6px 4px;border:none;background:transparent;border-radius:10px;font:inherit;font-size:10.5px;color:var(--ink-2);cursor:pointer}
+  .chip .e{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font-size:17px;background:var(--c);border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.3)}
+  .chip:hover{background:rgba(118,118,128,0.1)}
+  .chip.on{background:var(--accent-soft);color:var(--accent)}
+  #scoutBar{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(58px + var(--sab));z-index:1002;padding:6px;max-width:min(860px, calc(100% - 90px))}
+  #scoutPlacing{display:flex;gap:6px;align-items:center;padding:2px 4px;flex-wrap:wrap}
+  #scoutHint{font-size:12.5px;color:var(--ink-2);flex:1;min-width:150px;line-height:1.3}
+
+  .compass{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+  .compass button{font:inherit;font-size:12px;padding:7px 0;border-radius:8px;border:1px solid var(--line);background:#fff;cursor:pointer}
+  .compass button.on{background:var(--accent);color:#fff;border-color:transparent}
+  .hf-status{font-size:12.5px;padding:7px 10px;border-radius:10px;margin:6px 0}
+  .hf-status.good{background:rgba(47,191,113,0.14);color:#1d7a47}
+  .hf-status.bad{background:rgba(229,57,53,0.12);color:#a12622}
+  .hf-status.na{background:rgba(118,118,128,0.1);color:var(--ink-2)}
+  .snap{font-size:12px;color:var(--ink-2);background:rgba(118,118,128,0.08);border-radius:10px;padding:7px 10px;line-height:1.5}
+  .photos{display:flex;flex-wrap:wrap;gap:6px}
+  .photos .ph{width:72px;height:72px;border-radius:10px;background:#ddd center/cover;position:relative;cursor:pointer;border:none;padding:0}
+  .photos .ph .x{position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;background:#1c1c1e;color:#fff;font-size:12px;display:grid;place-items:center;border:2px solid #fff}
+  .photos .add{width:72px;height:72px;border-radius:10px;border:1.5px dashed var(--ink-3);background:transparent;font:inherit;font-size:11px;color:var(--ink-2);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+  .photos .add span{font-size:22px;line-height:1}
+  #photoView{position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;padding:calc(20px + var(--sat)) 12px calc(20px + var(--sab))}
+  #photoView img{max-width:100%;max-height:100%;object-fit:contain;border-radius:6px}
+  #photoView .x-btn{position:absolute;top:calc(12px + var(--sat));right:calc(12px + var(--sar));background:rgba(255,255,255,0.2);color:#fff}
+
+  .log-filters{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+  .log-filters button{font:inherit;font-size:12px;padding:5px 10px;border-radius:14px;border:1px solid var(--line);background:#fff;cursor:pointer}
+  .log-filters button.on{background:var(--ink);color:#fff;border-color:transparent}
+  .log-list{display:flex;flex-direction:column}
+  .log-item{display:flex;gap:10px;padding:9px 2px;border-bottom:1px solid var(--line);cursor:pointer;align-items:flex-start}
+  .log-item:hover{background:rgba(118,118,128,0.05)}
+  .log-item .e{width:30px;height:30px;flex:none;border-radius:50%;display:grid;place-items:center;font-size:15px;background:var(--c);border:2px solid #fff;box-shadow:0 1px 2px rgba(0,0,0,0.25)}
+  .log-item .t{font-size:13px;font-weight:600}
+  .log-item .s{font-size:11.5px;color:var(--ink-3);line-height:1.4}
+  .log-item .th{width:44px;height:44px;border-radius:8px;background:#ddd center/cover;flex:none;margin-left:auto}
+  .stat-bars{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;align-items:end;height:64px;margin:6px 0 2px}
+  .stat-bars div{background:var(--accent);border-radius:3px 3px 0 0;min-height:2px;position:relative}
+  .stat-bars div span{position:absolute;top:-15px;left:0;right:0;text-align:center;font-size:10px;color:var(--ink-2)}
+  .stat-lbls{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;font-size:10.5px;color:var(--ink-3);text-align:center}
+  .sync-status{font-size:12px;color:var(--ink-2);margin:6px 0}
+  .sync-status.err{color:var(--danger)}
+  .pop-land{margin-top:8px;padding-top:8px;border-top:1px solid var(--line);font-size:12.5px;line-height:1.45}
+  .pop-land b{font-weight:650}
+
   /* ---------- Mobile ---------- */
   @media (max-width: 760px), (max-height: 500px) and (pointer: coarse){
     .sheet{left:0 !important;right:0 !important;top:auto !important;bottom:0 !important;width:auto !important;max-height:62vh;border-radius:18px 18px 0 0;padding-bottom:var(--sab);transition:transform .25s ease}
@@ -261,6 +361,39 @@
     body.draw-open .leaflet-bottom{transform:translateY(calc(-1 * var(--dbh, 64px)))}
     .leaflet-bottom.leaflet-right{right:calc(54px + var(--sar))}
   }
+
+  /* ---------- Hunting UI on phones ---------- */
+  @media (max-width: 760px), (max-height: 500px) and (pointer: coarse){
+    #huntSheet, #logSheet{max-height:calc(64vh - var(--kb, 0px)) !important}
+    html.kb-open #huntSheet, html.kb-open #logSheet{max-height:calc(100% - var(--kb, 0px) - 12px - var(--sat)) !important}
+    #windChip{left:calc(8px + var(--sal));transform:none;top:calc(10px + var(--sat));padding:5px 10px 5px 6px;font-size:12px}
+    #legend{top:calc(56px + var(--sat)) !important}
+    #toast{top:calc(58px + var(--sat))}
+    #scoutBar{bottom:calc(46px + var(--sab));left:8px;right:8px;transform:none;max-width:none}
+    body.sheet-open #scoutBar{display:none}
+    body.scout-open .leaflet-bottom{transform:translateY(calc(-1 * var(--sbh, 70px)))}
+    body.scout-open .leaflet-bottom.leaflet-right, body.draw-open .leaflet-bottom.leaflet-right{right:calc(52px + var(--sar))}
+    body.scout-open .leaflet-control-attribution, body.draw-open .leaflet-control-attribution{max-width:calc(100vw - 52px - 130px)}
+    body.scout-open .leaflet-control-scale, body.draw-open .leaflet-control-scale{max-width:110px;overflow:hidden}
+    #toolbar .tool{width:42px;height:42px}
+    #toolbar{gap:6px}
+  }
+  @media (max-width: 760px) and (max-height: 700px){
+    #toolbar .tool{width:38px;height:38px;border-radius:11px}
+    #toolbar .tool svg{width:19px;height:19px}
+    #toolbar{gap:5px}
+  }
+  @media (max-height: 500px) and (pointer: coarse){
+    #huntSheet, #logSheet{max-height:none !important}
+    #toolbar .tool{width:36px;height:36px;border-radius:10px}
+    #toolbar .tool svg{width:18px;height:18px}
+    #toolbar{gap:5px;top:6px}
+    #scoutBar{left:calc(8px + var(--sal));right:calc(62px + var(--sar))}
+    body.sheet-open #scoutBar{display:block}
+    body.side-open #scoutBar{left:calc(346px + var(--sal))}
+    #windChip{top:8px}
+    body.side-open #windChip{left:calc(346px + var(--sal))}
+  }
 </style>
 </head>
 <body>
@@ -314,6 +447,7 @@
           <option value="slope">Slope</option>
           <option value="aspect">Aspect (direction slope faces)</option>
           <option value="lrm">Local relief (micro-topography)</option>
+          <option value="canopy">Tree height (canopy)</option>
         </select>
       </div>
       <div class="stack">
@@ -324,6 +458,11 @@
           <button data-v="multi">Multi-direction</button>
         </div>
       </div>
+      <div class="row" style="margin-top:10px">
+        <label for="treesOn">Treeshade <span style="color:var(--ink-3);font-size:12px">— shade the tree tops in 3D</span></label>
+        <label class="switch"><input type="checkbox" id="treesOn"><span></span></label>
+      </div>
+      <p class="note" id="treeNote" style="display:none;margin-top:0">Tree heights come from Meta/WRI's 1 m canopy model (estimated from satellite photos, typically within a few meters). Shows at zoom 12+.</p>
       <div id="sunCtl">
         <div class="stack" id="azRow"><div class="lbl"><span>Sun direction</span><span class="val" id="azV">315°</span></div>
           <input type="range" id="az" min="0" max="360" step="5" value="315"></div>
@@ -391,6 +530,31 @@
     </details>
 
     <details>
+      <summary>Hunting land</summary>
+      <label class="check"><input type="checkbox" id="ovPublic"> Public land <small>MDC areas &amp; MRAP</small></label>
+      <label class="check"><input type="checkbox" id="ovParcels"> Property lines <small>Greene Co. assessor</small></label>
+      <label class="check"><input type="checkbox" id="ovPlss"> Section lines <small>PLSS, MO DNR</small></label>
+      <div class="stack"><div class="lbl"><span>Opacity</span><span class="val" id="landOpV">80%</span></div>
+        <input type="range" id="landOp" min="0.2" max="1" step="0.05" value="0.8"></div>
+      <p class="note">Tap the map to see the landowner or area name. Public land shows from zoom 12+. Always confirm boundaries and permission before hunting.</p>
+      <details style="border:none;padding:0">
+        <summary style="text-transform:none;letter-spacing:0;font-size:12px">Use a different county's parcel map</summary>
+        <div class="stack"><div class="lbl">ArcGIS MapServer URL (leave blank for Greene County)</div>
+          <input type="text" id="parcelUrl" placeholder="https://…/arcgis/rest/services/…/MapServer" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+        <div class="sync-status" id="parcelStatus"></div>
+      </details>
+    </details>
+
+    <details>
+      <summary>Sync (Google Sheet)</summary>
+      <p class="note">Keeps your pins, logs and photos the same on your phone and computer. Paste the web app address and token from your Apps Script setup.</p>
+      <div class="stack"><div class="lbl">Web app URL</div><input type="text" id="syncUrl" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+      <div class="stack"><div class="lbl">Token</div><input type="text" id="syncToken" placeholder="from the setup step" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+      <div class="btn-row"><button class="btn small primary" id="syncSave">Save &amp; sync</button><button class="btn small" id="syncNowBtn">Sync now</button></div>
+      <div class="sync-status" id="syncStatus">Not set up — everything is saved on this device only.</div>
+    </details>
+
+    <details>
       <summary>Annotations</summary>
       <p class="note">Your drawings save automatically on this device. Export them to keep a copy or move them to another device or app.</p>
       <div class="btn-row">
@@ -424,9 +588,10 @@
     <button class="x-btn" id="annDone" title="Done" aria-label="Done">✓</button>
   </div>
   <div class="sheet-body">
-    <div class="stack" id="annLabelRow"><div class="lbl">Label</div><input type="text" id="annLabel" placeholder="Optional label shown on the map" enterkeyhint="done"></div>
+    <div id="huntFields" hidden></div>
+    <div class="stack" id="annLabelRow"><div class="lbl" id="annLabelLbl">Label</div><input type="text" id="annLabel" placeholder="Optional label shown on the map" enterkeyhint="done"></div>
     <div class="stack" id="annTextRow"><div class="lbl">Text</div><textarea id="annText" rows="2"></textarea></div>
-    <div class="stack"><div class="lbl">Color</div><div class="swatches" id="annSwatches"></div></div>
+    <div class="stack" id="annColorRow"><div class="lbl">Color</div><div class="swatches" id="annSwatches"></div></div>
     <div class="stack" id="annWeightRow"><div class="lbl"><span>Line width</span><span class="val" id="annWeightV">3 px</span></div><input type="range" id="annWeight" min="1" max="12" step="1" value="3"></div>
     <div class="stack" id="annFillRow"><div class="lbl"><span>Fill</span><span class="val" id="annFillV">20%</span></div><input type="range" id="annFill" min="0" max="0.8" step="0.05" value="0.2"></div>
     <label class="check" id="annDashRow"><input type="checkbox" id="annDash"> Dashed line</label>
@@ -490,6 +655,15 @@
   <button class="glass tool" id="layersBtn" title="Layers" aria-label="Layers">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="m2 13 10 5 10-5"/><path d="m2 18 10 5 10-5" opacity=".5"/></svg>
   </button>
+  <button class="glass tool" id="huntBtn" title="Weather, wind &amp; moon" aria-label="Weather, wind and moon">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 8h11a3 3 0 1 0-3-3"/><path d="M3 12h16a3 3 0 1 1-3 3"/><path d="M3 16h7"/></svg>
+  </button>
+  <button class="glass tool" id="scoutBtn" title="Scout: mark sightings, sign, stands" aria-label="Add scouting pin">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21Z"/><path d="M12 6.5v6M9 9.5h6"/></svg>
+  </button>
+  <button class="glass tool" id="logBtn" title="Scouting log" aria-label="Scouting log">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.3" fill="currentColor"/><circle cx="4.5" cy="12" r="1.3" fill="currentColor"/><circle cx="4.5" cy="18" r="1.3" fill="currentColor"/></svg>
+  </button>
   <button class="glass tool" id="annBtn" title="Draw &amp; annotate" aria-label="Draw and annotate">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
   </button>
@@ -527,6 +701,80 @@
     <button class="btn small" id="drawCancel">Cancel</button>
   </div>
 </div>
+
+<!-- ================= Wind chip ================= -->
+<div id="windChip" class="glass" hidden title="Weather, wind & moon">
+  <span class="wa"><svg viewBox="0 0 24 24" id="windChipArrow"><path d="M12 2 18 20 12 16 6 20Z" fill="#2f6f5e"/></svg></span>
+  <span><b id="windChipText">—</b> <span class="sub" id="windChipSub"></span></span>
+</div>
+
+<!-- ================= Hunt (weather / wind / moon) sheet ================= -->
+<aside id="huntSheet" class="glass sheet" hidden>
+  <div class="grab"></div>
+  <div class="sheet-head">
+    <div>
+      <div class="title">Weather, wind &amp; moon</div>
+      <div class="subtitle" id="wxWhere">—</div>
+    </div>
+    <button class="x-btn" id="huntClose" aria-label="Close">✕</button>
+  </div>
+  <div class="sheet-body">
+    <div class="btn-row" style="margin-top:8px">
+      <button class="btn small" id="wxHere">Weather for map center</button>
+      <button class="btn small" id="wxGps">At my location</button>
+    </div>
+    <div id="wxBody"><p class="note">Loading weather…</p></div>
+    <details open>
+      <summary>Sun, moon &amp; solunar</summary>
+      <div id="sunBody"></div>
+    </details>
+    <details open>
+      <summary>Stands &amp; scent cones</summary>
+      <label class="check"><input type="checkbox" id="conesOn" checked> Show scent cones downwind of stands</label>
+      <div class="stack"><div class="lbl"><span>Cone length</span><span class="val" id="coneLenV">300 yd</span></div>
+        <input type="range" id="coneLen" min="100" max="800" step="50" value="300"></div>
+      <div id="standList"></div>
+      <p class="note">Mark a stand, then pick its good wind directions. Stand icons turn green or red for the wind at the hour you pick above.</p>
+    </details>
+  </div>
+</aside>
+
+<!-- ================= Scouting log sheet ================= -->
+<aside id="logSheet" class="glass sheet" hidden>
+  <div class="grab"></div>
+  <div class="sheet-head">
+    <div>
+      <div class="title">Scouting log</div>
+      <div class="subtitle" id="logCount">—</div>
+    </div>
+    <button class="x-btn" id="logClose" aria-label="Close">✕</button>
+  </div>
+  <div class="sheet-body">
+    <div class="log-filters" id="logFilters"></div>
+    <input type="search" id="logSearch" placeholder="Search notes and names" style="margin:4px 0 6px">
+    <details id="logStatsBox">
+      <summary>Patterns</summary>
+      <div id="logStats"></div>
+    </details>
+    <div class="log-list" id="logList"></div>
+    <div class="btn-row"><button class="btn small" id="logCsv">Export log (CSV)</button></div>
+  </div>
+</aside>
+
+<!-- ================= Scout bar ================= -->
+<div id="scoutBar" class="glass" hidden>
+  <div class="scout-chips" id="scoutChips"></div>
+  <div id="scoutPlacing" hidden>
+    <span id="scoutHint"></span>
+    <button class="btn small" id="scoutGps">📍 At my GPS</button>
+    <button class="btn small" id="scoutUndo">Undo point</button>
+    <button class="btn small primary" id="scoutFinish">Finish</button>
+    <button class="btn small" id="scoutCancel">Cancel</button>
+  </div>
+</div>
+
+<div id="photoView" hidden><img id="photoImg" alt=""><button class="x-btn" id="photoClose" aria-label="Close">✕</button></div>
+<input type="file" id="photoInput" accept="image/*" hidden>
 
 <div id="legend" class="glass">
   <div class="lt" id="legTitle">Elevation</div>
@@ -578,13 +826,14 @@ const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platfor
 
 const S = {
   units: 'ft', color: 'none', shade: 'hs', az: 315, alt: 45, ex: 2, strength: 0.7,
-  eMin: 0, eMax: 500, auto: true, ramp: 'terrain', slopeMax: 45, lrmRadius: 10, lrmRange: 3 / M2FT, opacity: 0.85,
+  trees: false, eMin: 0, eMax: 500, auto: true, ramp: 'terrain', slopeMax: 45, lrmRadius: 10, lrmRange: 3 / M2FT, opacity: 0.85,
 };
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
 };
 if (store.get('tv_units') === 'm') S.units = 'm';
+S.trees = store.get('tv_trees') === '1';
 
 /* =====================================================================
    Helpers
@@ -630,6 +879,7 @@ const RAMPS = {
   terrain: makeRamp([[0, '#2f6b4f'], [0.22, '#6fa363'], [0.45, '#d9d48e'], [0.68, '#c49a62'], [0.86, '#9b7b66'], [1, '#f3efea']]),
   spectral: makeRamp([[0, '#2c4f9e'], [0.25, '#4fa3c7'], [0.5, '#f2efc0'], [0.75, '#ef9a4d'], [1, '#b2382b']]),
   ice: makeRamp([[0, '#1d2a3a'], [0.5, '#6f8fa8'], [1, '#f2f5f7']]),
+  canopy: makeRamp([[0, '#f4f1e4'], [0.06, '#e6e8c6'], [0.2, '#b9d88c'], [0.45, '#5fa457'], [0.7, '#2c7440'], [1, '#143a24']]),
   slope: makeRamp([[0, '#f6f5ef'], [0.2, '#f2e28f'], [0.45, '#e8a04b'], [0.7, '#c84d3a'], [1, '#5e1d4a']]),
   lrm: makeRamp([[0, '#24508f'], [0.35, '#8fb4d9'], [0.5, '#f5f4ef'], [0.65, '#e6a58c'], [1, '#a5281f']]),
 };
@@ -769,7 +1019,8 @@ function renderTile(canvas, r) {
   const multiAz = [0, 60, 120, 180, 240, 300].map(a => ((360 - a + 90) % 360) * DEG);
   const flat = cosZ;
   const shadeMode = S.shade, colorMode = S.color, k = S.strength;
-  const lut = colorMode === 'elev' ? RAMPS[S.ramp] : colorMode === 'slope' ? RAMPS.slope : colorMode === 'lrm' ? RAMPS.lrm : null;
+  const lut = colorMode === 'elev' ? RAMPS[S.ramp] : colorMode === 'slope' ? RAMPS.slope : colorMode === 'lrm' ? RAMPS.lrm : colorMode === 'canopy' ? RAMPS.canopy : null;
+  const surf = S.trees && r.chm ? surfaceOf(r) : data, chm = r.chm, canMax = 30;
   const eMin = S.eMin, eSpan = (S.eMax - S.eMin) || 1, sMax = S.slopeMax;
   let lrm = null;
   if (colorMode === 'lrm') {
@@ -784,10 +1035,11 @@ function renderTile(canvas, r) {
       const sx = Math.min(w - 2, Math.max(1, Math.round((i + 0.5) * scale - 0.5) + buf));
       const o = (j * TILE + i) * 4, idx = sy * w + sx, e = data[idx];
       if (e !== e) { d[o + 3] = 0; continue; }
-      let a = data[idx - w - 1], b = data[idx - w], c = data[idx - w + 1], dd = data[idx - 1], f = data[idx + 1];
-      let g = data[idx + w - 1], hh = data[idx + w], ii = data[idx + w + 1];
-      if (a !== a) a = e; if (b !== b) b = e; if (c !== c) c = e; if (dd !== dd) dd = e; if (f !== f) f = e;
-      if (g !== g) g = e; if (hh !== hh) hh = e; if (ii !== ii) ii = e;
+      const e0 = surf[idx];
+      let a = surf[idx - w - 1], b = surf[idx - w], c = surf[idx - w + 1], dd = surf[idx - 1], f = surf[idx + 1];
+      let g = surf[idx + w - 1], hh = surf[idx + w], ii = surf[idx + w + 1];
+      if (a !== a) a = e0; if (b !== b) b = e0; if (c !== c) c = e0; if (dd !== dd) dd = e0; if (f !== f) f = e0;
+      if (g !== g) g = e0; if (hh !== hh) hh = e0; if (ii !== ii) ii = e0;
       const dzdx = ((c + 2 * f + ii) - (a + 2 * dd + g)) / (8 * cell);
       const dzdy = ((g + 2 * hh + ii) - (a + 2 * b + c)) / (8 * cell);
       const grad = Math.sqrt(dzdx * dzdx + dzdy * dzdy);
@@ -804,6 +1056,7 @@ function renderTile(canvas, r) {
       if (colorMode === 'none') { const v = shadeMode === 'none' ? 200 : shade * 255; R = G = B = v; }
       else {
         if (colorMode === 'elev') { let t = (e - eMin) / eSpan; t = t < 0 ? 0 : t > 1 ? 1 : t; const li = (t * 255 | 0) * 3; R = lut[li]; G = lut[li + 1]; B = lut[li + 2]; }
+        else if (colorMode === 'canopy') { let t = chm ? chm[idx] / canMax : 0; t = t > 1 ? 1 : t; const li = (t * 255 | 0) * 3; R = lut[li]; G = lut[li + 1]; B = lut[li + 2]; }
         else if (colorMode === 'slope') { let t = Math.atan(grad) / DEG / sMax; t = t > 1 ? 1 : t; const li = (t * 255 | 0) * 3; R = lut[li]; G = lut[li + 1]; B = lut[li + 2]; }
         else if (colorMode === 'aspect') {
           let comp = 90 - asp / DEG; comp = ((comp % 360) + 360) % 360;
@@ -818,6 +1071,110 @@ function renderTile(canvas, r) {
   ctx.putImageData(img, 0, 0);
 }
 
+/* =====================================================================
+   TREESHADE — Meta/WRI Canopy Height Map v2 (1 m, CC BY 4.0)
+   Cloud-optimized GeoTIFFs, one per zoom-10 Web-Mercator quadkey tile,
+   read with HTTP range requests (only the pixels we need).
+   ===================================================================== */
+const CHM = {
+  base: 'https://data.source.coop/tge-labs/meta-chm-v2/',
+  z: 10, minZoom: 12,
+  pattern: store.get('tv_chmPattern') || null,
+  files: new Map(), warned: false, lookup: null,
+};
+function needsChm(z) { return (S.trees || S.color === 'canopy') && z >= CHM.minZoom && !!window.GeoTIFF; }
+function quadkey(x, y, z) { let q = ''; for (let i = z; i > 0; i--) { const m = 1 << (i - 1); q += ((x & m) ? 1 : 0) + ((y & m) ? 2 : 0); } return q; }
+function chmHttps(u) { return String(u).replace(/^s3:\/\/(us-west-2\.)?opendata\.source\.coop\//, 'https://data.source.coop/').replace(/^s3:\/\/([^/]+)\//, 'https://$1.s3.amazonaws.com/'); }
+async function chmIndexLookup(qk) {
+  // Look the tile up in the dataset's GeoParquet index (rows are sorted by quadkey).
+  if (!CHM.lookup) CHM.lookup = (async () => {
+    const hp = await import('https://cdn.jsdelivr.net/npm/hyparquet@1.33.1/+esm');
+    const file = await hp.asyncBufferFromUrl({ url: CHM.base + 'tiles.parquet' });
+    const md = await hp.parquetMetadataAsync(file);
+    return { hp, file, md };
+  })();
+  const { hp, file, md } = await CHM.lookup;
+  let start = 0, pick = null;
+  for (const rg of md.row_groups) {
+    const col = rg.columns.find(c => (c.meta_data.path_in_schema || []).join('.') === 'quadkey');
+    const st = col && col.meta_data.statistics, n = Number(rg.num_rows);
+    const mn = st && (st.min_value ?? st.min), mx = st && (st.max_value ?? st.max);
+    if (mn != null && mx != null && String(mn) <= qk && qk <= String(mx)) { pick = { start, end: start + n }; break; }
+    start += n;
+  }
+  const rows = await hp.parquetReadObjects({ file, metadata: md, columns: ['quadkey', 'cog_url'], ...(pick ? { rowStart: pick.start, rowEnd: pick.end } : {}) });
+  const hit = rows.find(r => r.quadkey === qk);
+  return hit ? chmHttps(hit.cog_url) : null;
+}
+async function chmUrl(qk) {
+  if (CHM.pattern) return CHM.pattern.replace('{qk}', qk);
+  const guess = CHM.base + 'chm/' + qk + '.tif';
+  try {
+    const res = await fetch(guess, { headers: { Range: 'bytes=0-7' } });
+    if (res.ok) { CHM.pattern = CHM.base + 'chm/{qk}.tif'; store.set('tv_chmPattern', CHM.pattern); return guess; }
+  } catch (e) { /* try the index */ }
+  const u = await chmIndexLookup(qk);
+  if (u && u.includes(qk)) { CHM.pattern = u.replace(qk, '{qk}'); store.set('tv_chmPattern', CHM.pattern); }
+  return u;
+}
+function chmTiff(qk) {
+  if (!CHM.files.has(qk)) {
+    const p = (async () => { const url = await chmUrl(qk); return url ? GeoTIFF.fromUrl(url, { allowFullFile: false, cache: true }) : null; })();
+    p.catch(() => CHM.files.delete(qk));
+    CHM.files.set(qk, p);
+    while (CHM.files.size > 12) CHM.files.delete(CHM.files.keys().next().value);
+  }
+  return CHM.files.get(qk);
+}
+/** Canopy heights (m) on the same grid as a DEM raster r (incl. buffer). */
+async function fetchChm(r, signal) {
+  const s = r.z - CHM.z, qx = r.x >> s, qy = r.y >> s, qk = quadkey(qx, qy, CHM.z);
+  const tiff = await chmTiff(qk);
+  if (!tiff) return null;
+  const W = r.w, H = r.h, bufPx = r.buf;
+  const ts = WORLD / Math.pow(2, r.z), res = ts / (W - 2 * bufPx);
+  const bb = [-ORIGIN + r.x * ts - bufPx * res, ORIGIN - (r.y + 1) * ts - bufPx * res, -ORIGIN + (r.x + 1) * ts + bufPx * res, ORIGIN - r.y * ts + bufPx * res];
+  const qb = tileBBox(qx, qy, CHM.z, 0);
+  const c0 = Math.max(0, Math.round((qb[0] - bb[0]) / res)), c1 = Math.min(W, Math.round((qb[2] - bb[0]) / res));
+  const r0 = Math.max(0, Math.round((bb[3] - qb[3]) / res)), r1 = Math.min(H, Math.round((bb[3] - qb[1]) / res));
+  const pw = c1 - c0, ph = r1 - r0; if (pw <= 0 || ph <= 0) return null;
+  const ras = await tiff.readRasters({ bbox: [bb[0] + c0 * res, bb[3] - r1 * res, bb[0] + c1 * res, bb[3] - r0 * res], width: pw, height: ph, resampleMethod: 'bilinear', signal });
+  const src = ras[0], out = new Float32Array(W * H);
+  for (let y = 0; y < H; y++) {
+    const sy = Math.min(ph - 1, Math.max(0, y - r0));
+    for (let x = 0; x < W; x++) { const v = src[sy * pw + Math.min(pw - 1, Math.max(0, x - c0))]; out[y * W + x] = v >= 255 ? 0 : v; }
+  }
+  return out;
+}
+async function ensureChm(r, signal) {
+  if (!needsChm(r.z) || r.chm !== undefined) return r;
+  try { r.chm = await fetchChm(r, signal); r.dsm = null; }
+  catch (e) {
+    if (e.name === 'AbortError') throw e;
+    r.chm = null;
+    if (!CHM.warned) { CHM.warned = true; msg('Tree heights could not be loaded (' + (e.message || 'network error') + '). Showing bare ground.', true, 9000); }
+  }
+  return r;
+}
+function surfaceOf(r) {
+  if (!r.chm) return r.data;
+  if (!r.dsm) { const n = r.data.length, o = new Float32Array(n); for (let i = 0; i < n; i++) o[i] = r.data[i] + r.chm[i]; r.dsm = o; }
+  return r.dsm;
+}
+function sampleChm(latlng) {
+  if (!map.hasLayer(terrain)) return null;
+  const z = Math.min(Math.round(map.getZoom()), terrain.options.maxNativeZoom);
+  const p = map.project(latlng, z), tx = Math.floor(p.x / TILE), ty = Math.floor(p.y / TILE);
+  const r = terrain.cache.get(z + '/' + tx + '/' + ty); if (!r || !r.chm) return null;
+  const sc = r.w / NPX, x = Math.round((p.x - tx * TILE) * sc + r.buf - 0.5), y = Math.round((p.y - ty * TILE) * sc + r.buf - 0.5);
+  return r.chm[y * r.w + x] ?? null;
+}
+function syncTreeAttribution() {
+  const t = 'Tree heights © Meta/WRI CHMv2 (CC BY 4.0)';
+  map.attributionControl.removeAttribution(t);
+  if ((S.trees || S.color === 'canopy') && map.hasLayer(terrain)) map.attributionControl.addAttribution(t);
+}
+
 const CACHE_MAX = 160;
 const TerrainLayer = L.GridLayer.extend({
   options: { tileSize: TILE, maxNativeZoom: 17, maxZoom: 21, minZoom: 5, pane: 'terrain', updateWhenIdle: true, keepBuffer: 1 },
@@ -828,10 +1185,11 @@ const TerrainLayer = L.GridLayer.extend({
   createTile(coords, done) {
     const canvas = document.createElement('canvas'); canvas.width = canvas.height = TILE;
     const key = this.key(coords), hit = this.getCached(key);
-    if (hit) { renderTile(canvas, hit); setTimeout(() => done(null, canvas), 0); return canvas; }
+    if (hit && (!needsChm(hit.z) || hit.chm !== undefined)) { renderTile(canvas, hit); setTimeout(() => done(null, canvas), 0); return canvas; }
     const ac = new AbortController(); canvas._ac = ac;
-    fetchDem(coords, ac.signal).then(r => {
-      this.putCached(key, r); renderTile(canvas, r); this.errors = 0; done(null, canvas); scheduleAuto();
+    (hit ? Promise.resolve(hit) : fetchDem(coords, ac.signal).then(r => { this.putCached(key, r); return r; }))
+    .then(r => ensureChm(r, ac.signal)).then(r => {
+      renderTile(canvas, r); this.errors = 0; done(null, canvas); scheduleAuto();
     }).catch(err => {
       if (err.name === 'AbortError') return;
       this.errors++;
@@ -956,6 +1314,7 @@ function legendInfo() {
   if (!map.hasLayer(terrain) || S.color === 'none') return null;
   const u = S.units;
   if (S.color === 'elev') return { title: 'Elevation (' + u + ')', lut: RAMPS[S.ramp], min: toDisp(S.eMin).toFixed(0), mid: toDisp((S.eMin + S.eMax) / 2).toFixed(0), max: toDisp(S.eMax).toFixed(0) };
+  if (S.color === 'canopy') return { title: 'Tree height (' + u + ')', lut: RAMPS.canopy, min: '0', mid: Math.round(toDisp(15)).toString(), max: Math.round(toDisp(30)) + '+' };
   if (S.color === 'slope') return { title: 'Slope', lut: RAMPS.slope, min: '0°', mid: (S.slopeMax / 2).toFixed(0) + '°', max: S.slopeMax + '°+' };
   if (S.color === 'aspect') return { title: 'Aspect (direction slope faces)', aspect: true, min: 'N', mid: 'E · S · W', max: 'N' };
   const rr = toDisp(S.lrmRange).toFixed(1);
@@ -1000,7 +1359,18 @@ function updateVisibility() {
   $('azRow').style.display = S.shade === 'hs' ? '' : 'none';
   $('strengthCtl').style.display = (S.shade !== 'none' && S.color !== 'none') ? '' : 'none';
 }
-$('colorMode').addEventListener('change', e => { S.color = e.target.value; updateVisibility(); if (S.color === 'elev' && S.auto) applyAutoRange(); redrawSoon(); });
+$('colorMode').addEventListener('change', e => {
+  S.color = e.target.value; updateVisibility(); syncTreeAttribution();
+  if (S.color === 'elev' && S.auto) applyAutoRange();
+  if (S.color === 'canopy') { terrain.redraw(); updateLegend(); } else redrawSoon();
+});
+$('treesOn').checked = S.trees; $('treeNote').style.display = S.trees ? '' : 'none';
+$('treesOn').addEventListener('change', e => {
+  S.trees = e.target.checked; store.set('tv_trees', S.trees ? '1' : '0');
+  $('treeNote').style.display = S.trees ? '' : 'none'; syncTreeAttribution();
+  if (S.trees && map.getZoom() < CHM.minZoom) msg('Zoom in to level 12+ to see trees shaded', false, 5000);
+  terrain.redraw();
+});
 $('shadeSeg').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   [...$('shadeSeg').children].forEach(x => x.classList.toggle('on', x === b));
@@ -1012,7 +1382,7 @@ $('autoRange').addEventListener('change', e => { S.auto = e.target.checked; if (
   const a = fromDisp(+$('eMin').value), b = fromDisp(+$('eMax').value);
   if (isFinite(a) && isFinite(b) && b > a) { S.eMin = a; S.eMax = b; S.auto = false; $('autoRange').checked = false; redrawSoon(); }
 }));
-$('terrainOn').addEventListener('change', e => { if (e.target.checked) terrain.addTo(map); else map.removeLayer(terrain); updateLegend(); });
+$('terrainOn').addEventListener('change', e => { if (e.target.checked) terrain.addTo(map); else map.removeLayer(terrain); updateLegend(); syncTreeAttribution(); });
 $('basemap').addEventListener('change', e => setBase(e.target.value));
 $('labels').addEventListener('change', e => { if (e.target.checked) labelLayers.addTo(map); else map.removeLayer(labelLayers); });
 $('unitToggle').addEventListener('click', () => {
@@ -1027,13 +1397,13 @@ $('unitToggle').addEventListener('click', () => {
 function setPanel(open) {
   $('panel').classList.toggle('collapsed', !open);
   $('layersBtn').classList.toggle('on', open && isMobile());
-  if (open && isMobile()) { closeAnnSheet(); }
+  if (open && isMobile()) { if (sel) deselect(); else closeAnnSheet(); if (!$('huntSheet').hidden) closeHunt(); if (!$('logSheet').hidden) closeLog(); }
   syncSheetState();
 }
 function syncSheetState() {
-  const anyOpen = !$('panel').classList.contains('collapsed') || !$('annSheet').hidden || !$('exportSheet').hidden || $('profile').classList.contains('show');
+  const anyOpen = !$('panel').classList.contains('collapsed') || !$('annSheet').hidden || !$('exportSheet').hidden || !$('huntSheet').hidden || !$('logSheet').hidden || $('profile').classList.contains('show');
   document.body.classList.toggle('sheet-open', isMobile() && anyOpen);
-  const sideOpen = !$('panel').classList.contains('collapsed') || !$('annSheet').hidden || !$('exportSheet').hidden;
+  const sideOpen = !$('panel').classList.contains('collapsed') || !$('annSheet').hidden || !$('exportSheet').hidden || !$('huntSheet').hidden || !$('logSheet').hidden;
   document.body.classList.toggle('side-open', isMobile() && sideOpen);
   document.body.classList.toggle('prof-open', $('profile').classList.contains('show'));
   document.body.classList.toggle('draw-open', !$('drawBar').hidden);
@@ -1053,6 +1423,8 @@ document.querySelectorAll('.sheet, #profile').forEach(sh => {
       else if (sh.id === 'annSheet') deselect();
       else if (sh.id === 'exportSheet') closeExport();
       else if (sh.id === 'profile') closeProfile();
+      else if (sh.id === 'huntSheet') closeHunt();
+      else if (sh.id === 'logSheet') closeLog();
     }
   }, { passive: true });
 });
@@ -1077,13 +1449,14 @@ $('zoomOut').addEventListener('click', () => map.zoomOut());
 /* =====================================================================
    Click → elevation popup
    ===================================================================== */
-function busyMode() { return profile.drawing || annDrawing() || exp.on || textMode; }
+function busyMode() { return profile.drawing || annDrawing() || exp.on || textMode || !!HUNT.placing; }
 map.on('click', async e => {
   if (busyMode()) return;
   if (sel) { deselect(); return; }
   if (!$('drawBar').hidden) return;
   const ll = e.latlng;
-  const pop = L.popup({ maxWidth: 260 }).setLatLng(ll).setContent('<div class="pop-sub">Getting elevation…</div>').openOn(map);
+  const pop = L.popup({ maxWidth: isMobile() ? 250 : 280, autoPanPaddingTopLeft: [12, 70], autoPanPaddingBottomRight: [isMobile() ? 62 : 70, 60] }).setLatLng(ll).setContent('<div class="pop-sub">Getting elevation…</div>').openOn(map);
+  const landP = (land.public || land.parcels) ? landInfoHtml(ll) : Promise.resolve('');
   let v = null, src = 'from USGS 3DEP';
   try { v = (await getSamples([ll]))[0]; } catch (err) { v = sampleCached(ll); src = 'from loaded tiles'; }
   if (v == null) v = sampleCached(ll);
@@ -1091,7 +1464,9 @@ map.on('click', async e => {
   pop.setContent(
     `<div class="pop-elev">${v == null ? 'No data' : (S.units === 'ft' ? ft.toFixed(1) + ' ft' : v.toFixed(2) + ' m')}</div>` +
     `<div class="pop-sub">${v == null ? '' : (S.units === 'ft' ? v.toFixed(2) + ' m' : ft.toFixed(1) + ' ft') + ' · NAVD88 · ' + src}</div>` +
-    `<div class="pop-sub">${ll.lat.toFixed(6)}, ${ll.lng.toFixed(6)}</div>`);
+    `<div class="pop-sub">${ll.lat.toFixed(6)}, ${ll.lng.toFixed(6)}</div>` +
+    (() => { const t = sampleChm(ll); return t != null && t >= 1 ? `<div class="pop-sub">🌳 Trees here ≈ <b style="color:var(--ink)">${S.units === 'ft' ? Math.round(t * M2FT) + ' ft' : t.toFixed(0) + ' m'}</b> tall (canopy model)</div>` : ''; })());
+  const lh = await landP; if (lh && map.hasLayer(pop)) pop.setContent(pop.getContent() + lh);
 });
 
 /* =====================================================================
@@ -1210,6 +1585,7 @@ function textIcon(a, selected) {
 }
 function dashFor(a) { return a.dash ? `${Math.max(4, a.weight * 2.5)} ${Math.max(4, a.weight * 2)}` : null; }
 function applyStyle(layer) {
+  if (layer.ann && layer.ann.cat && CATS[layer.ann.cat]) { huntApplyStyle(layer); return; }
   const a = layer.ann, isSel = layer === sel;
   if (a.kind === 'point') layer.setIcon(pinIcon(a.color, isSel));
   else if (a.kind === 'text') layer.setIcon(textIcon(a, isSel));
@@ -1274,13 +1650,16 @@ function deselect(keepSheet) {
   if (!keepSheet) closeAnnSheet();
 }
 function openAnnSheet() {
-  const a = sel.ann;
-  $('annTitle').textContent = KIND_NAMES[a.kind];
+  const a = sel.ann, hunt = !!(a.cat && CATS[a.cat]);
+  closeSideSheets('annSheet');
+  $('annTitle').textContent = hunt ? CATS[a.cat].emoji + ' ' + CATS[a.cat].name : KIND_NAMES[a.kind];
+  $('annLabelLbl').textContent = hunt ? (a.cat === 'stand' ? 'Stand name' : 'Name / label (optional)') : 'Label';
   const show = (id, v) => { $(id).style.display = v ? '' : 'none'; };
   show('annLabelRow', a.kind !== 'text'); show('annTextRow', a.kind === 'text');
-  show('annWeightRow', ['line', 'polygon', 'rect', 'circle'].includes(a.kind));
-  show('annFillRow', ['polygon', 'rect', 'circle'].includes(a.kind));
-  show('annDashRow', ['line', 'polygon', 'rect', 'circle'].includes(a.kind));
+  show('annColorRow', !hunt);
+  show('annWeightRow', !hunt && ['line', 'polygon', 'rect', 'circle'].includes(a.kind));
+  show('annFillRow', !hunt && ['polygon', 'rect', 'circle'].includes(a.kind));
+  show('annDashRow', !hunt && ['line', 'polygon', 'rect', 'circle'].includes(a.kind));
   show('annSizeRow', a.kind === 'text');
   show('annExportArea', ['polygon', 'rect', 'circle', 'line'].includes(a.kind));
   $('annEditNote').textContent = (a.kind === 'point' || a.kind === 'text') ? 'Drag it on the map to move it.' : a.kind === 'circle' ? 'Drag the edge handle to resize, the center to move.' : 'Drag the corner handles to reshape; drag a middle dot to add a point. Drag the shape to move it.';
@@ -1291,6 +1670,7 @@ function openAnnSheet() {
   $('annSize').value = a.size; $('annSizeV').textContent = a.size + ' px';
   renderSwatches();
   updateMeasure();
+  renderHuntFields();
   $('annSheet').hidden = false; document.body.classList.add('ann-open');
   if (isMobile()) setPanel(false);
   syncSheetState();
@@ -1365,7 +1745,7 @@ function startTool(shape) {
     templineStyle: { color: D.color, weight: 3 }, hintlineStyle: { color: D.color, dashArray: '5,5', weight: 2 },
     pathOptions: { color: D.color, weight: D.weight, fillColor: D.color, fillOpacity: shape === 'Line' ? 0 : D.fillOpacity, dashArray: D.dash ? `${D.weight * 2.5} ${D.weight * 2}` : null },
   });
-  map.pm.enableDraw(shape, { continueDrawing: false, finishOn: shape === 'Line' ? 'dblclick' : null });
+  map.pm.enableDraw(shape, { continueDrawing: false, finishOn: shape === 'Line' && !isTouch ? 'dblclick' : null });
   setDrawingUI(shape);
 }
 function stopTool() {
@@ -1381,7 +1761,9 @@ map.on('pm:drawend', () => { if (!textMode) setDrawingUI(null); });
 map.on('pm:create', e => {
   const layer = e.layer, kind = kindFromShape(e.shape);
   if (!kind) return;
-  layer.ann = { kind, color: D.color, weight: D.weight, fillOpacity: D.fillOpacity, dash: D.dash, label: '', size: D.size };
+  layer.ann = HUNT.pendingCat && kind !== 'point'
+    ? Object.assign(newHuntAnn(HUNT.pendingCat, kind), { wx: wxSnapshot(layer.getBounds().getCenter()) })
+    : { kind, color: D.color, weight: D.weight, fillOpacity: D.fillOpacity, dash: D.dash, label: '', size: D.size };
   if (!ann.hasLayer(layer)) ann.addLayer(layer);
   wireLayer(layer); applyStyle(layer); saveAnn();
   setTimeout(() => select(layer), 0);
@@ -1397,7 +1779,7 @@ map.on('click', e => {
 function openDrawBar(open) {
   $('drawBar').hidden = !open; $('annBtn').classList.toggle('on', open); syncSheetState();
   if (!open) { stopTool(); deselect(); }
-  else { closeProfile(); map.closePopup(); if (isMobile()) setPanel(false); }
+  else { closeProfile(); map.closePopup(); if (!$('scoutBar').hidden) openScout(false); if (isMobile()) setPanel(false); }
 }
 $('annBtn').addEventListener('click', () => openDrawBar($('drawBar').hidden));
 $('drawClose').addEventListener('click', () => openDrawBar(false));
@@ -1443,9 +1825,10 @@ function loadFeatures(fc) {
   (fc.features || []).forEach(f => { const l = featureToLayer(f); if (l) { ann.addLayer(l); wireLayer(l); applyStyle(l); n++; } });
   return n;
 }
-let saveAnnTimer;
-function saveAnn() { clearTimeout(saveAnnTimer); saveAnnTimer = setTimeout(() => store.set('tv_ann', JSON.stringify(annToGeoJSON())), 200); }
-try { const s = store.get('tv_ann'); if (s) loadFeatures(JSON.parse(s)); } catch (e) { console.warn(e); }
+let saveAnnTimer = null;
+function doSave() { saveAnnTimer = null; trackChanges(); store.set('tv_ann', JSON.stringify(annToGeoJSON())); refreshCones(); renderStandList(); renderLog(); scheduleSync(); }
+function saveAnn() { clearTimeout(saveAnnTimer); saveAnnTimer = setTimeout(doSave, 200); }
+function flushSave() { if (saveAnnTimer) { clearTimeout(saveAnnTimer); doSave(); } }
 
 function kmlColor(hex, a) { const [r, g, b] = hexToRgb(hex); const h = n => n.toString(16).padStart(2, '0'); return h(Math.round(a * 255)) + h(b) + h(g) + h(r); }
 function circleRing(c, r, n = 64) { const pts = []; for (let i = 0; i <= n; i++) { const t = i / n * 2 * Math.PI; pts.push([c.lng + (r * Math.sin(t)) / (R_EARTH * Math.cos(c.lat * DEG)) / DEG, c.lat + (r * Math.cos(t)) / R_EARTH / DEG]); } return pts; }
@@ -1454,7 +1837,7 @@ function annToKml() {
   const pm = [];
   ann.eachLayer(l => {
     const a = l.ann; if (!a) return;
-    const name = a.kind === 'text' ? a.text : a.label;
+    const name = a.kind === 'text' ? a.text : (a.label || (a.cat && CATS[a.cat] ? CATS[a.cat].name : ''));
     const line = `<LineStyle><color>${kmlColor(a.color, 1)}</color><width>${a.weight || 2}</width></LineStyle>`;
     const poly = `<PolyStyle><color>${kmlColor(a.color, a.fillOpacity || 0)}</color></PolyStyle>`;
     const coords = arr => arr.map(p => `${(+p[0]).toFixed(7)},${(+p[1]).toFixed(7)}`).join(' ');
@@ -1496,7 +1879,7 @@ $('annClear').addEventListener('click', () => {
 const profile = { drawing: false, pts: [], line: null, verts: L.layerGroup(), data: null, hover: null };
 profile.verts.addTo(map);
 function startProfile() {
-  clearProfile(); openDrawBar(false);
+  clearProfile(); openDrawBar(false); if (!$('scoutBar').hidden) openScout(false);
   profile.drawing = true; $('profileBtn').classList.add('on');
   $('profile').classList.add('show'); $('profHint').style.display = '';
   $('profHint').innerHTML = 'Tap points on the map to draw a line (e.g. across the river bank). Double-click or press <b>Finish line</b> when done.';
@@ -1902,7 +2285,7 @@ async function drawTerrainExport(ctx, b, rx, ry, notes, prog) {
   const rasters = new Array(jobs.length);
   await pool(jobs, 6, async (j, i) => {
     const key = z + '/' + j.x + '/' + j.y;
-    try { rasters[i] = terrain.getCached(key) || await fetchDem({ x: j.x, y: j.y, z }); terrain.putCached(key, rasters[i]); }
+    try { rasters[i] = terrain.getCached(key) || await fetchDem({ x: j.x, y: j.y, z }); terrain.putCached(key, rasters[i]); await ensureChm(rasters[i]); }
     catch (e) { fail++; }
     done++; prog('Elevation', done / jobs.length);
   });
@@ -1931,17 +2314,48 @@ function drawAnnotations(ctx, b, rx, ry, f) {
   };
   const order = { polygon: 0, rect: 0, circle: 0, line: 1, point: 2, text: 3 };
   const layers = ann.getLayers().filter(l => l.ann).sort((a, c) => order[a.ann.kind] - order[c.ann.kind]);
+  const wNow = windAt();
+  if (wNow && HUNT.cones) layers.filter(l => l.ann.cat === 'stand').forEach(l => {
+    const pts = conePoints(l.getLatLng(), wNow).map(P);
+    ctx.save(); ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath();
+    ctx.fillStyle = 'rgba(239,138,23,0.16)'; ctx.fill(); ctx.setLineDash([4 * f, 4 * f]); ctx.strokeStyle = '#ef8a17'; ctx.lineWidth = 1.5 * f; ctx.stroke(); ctx.restore();
+  });
+  const EMOJI_FONT = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
   layers.forEach(l => {
     const a = l.ann, w = (a.weight || 3) * f;
     ctx.save();
     ctx.lineJoin = 'round'; ctx.lineCap = 'round';
     ctx.setLineDash(a.dash ? [Math.max(4, a.weight * 2.5) * f, Math.max(4, a.weight * 2) * f] : []);
-    if (a.kind === 'line' || a.kind === 'polygon' || a.kind === 'rect') {
+    if (a.cat && CATS[a.cat] && a.kind === 'point') {
+      const c = CATS[a.cat], [x, y] = P(l.getLatLng()), r = 13 * f;
+      if (a.heading !== '' && a.heading != null) {
+        ctx.save(); ctx.translate(x, y); ctx.rotate(a.heading * DEG); ctx.setLineDash([]);
+        ctx.beginPath(); ctx.moveTo(0, -r - 14 * f); ctx.lineTo(7 * f, -r - 2 * f); ctx.lineTo(2.5 * f, -r - 3 * f); ctx.lineTo(2.5 * f, -r + 2 * f); ctx.lineTo(-2.5 * f, -r + 2 * f); ctx.lineTo(-2.5 * f, -r - 3 * f); ctx.lineTo(-7 * f, -r - 2 * f); ctx.closePath();
+        ctx.fillStyle = c.color; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.4 * f; ctx.stroke(); ctx.restore();
+      }
+      const st = a.cat === 'stand' ? standStatus(l) : 'na';
+      ctx.setLineDash([]);
+      if (st !== 'na') { ctx.beginPath(); ctx.arc(x, y, r + 3.5 * f, 0, Math.PI * 2); ctx.fillStyle = st === 'good' ? '#2fbf71' : '#e53935'; ctx.fill(); }
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = c.color; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5 * f; ctx.stroke();
+      ctx.font = `${15 * f}px ${EMOJI_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff'; ctx.fillText(c.emoji, x, y + 1 * f);
+      const t = (a.label || a.cat === 'stand' || (a.cat === 'sighting' && a.count > 1)) ? huntTitle(a) : '';
+      if (t) texts.push([t, x, y + r + 9 * f, '#1c1c1e', 11.5 * f]);
+    } else if (a.kind === 'line' || a.kind === 'polygon' || a.kind === 'rect') {
       const pts = ringOf(l).map(P);
       ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]));
       if (a.kind !== 'line') { ctx.closePath(); if (a.fillOpacity > 0) { ctx.fillStyle = rgba(a.color, a.fillOpacity); ctx.fill(); } }
       ctx.strokeStyle = a.color; ctx.lineWidth = w; ctx.stroke();
-      if (a.label) {
+      if (a.cat === 'route') {
+        ctx.setLineDash([]);
+        for (let i = 1; i < pts.length; i++) {
+          const mx = (pts[i - 1][0] + pts[i][0]) / 2, my = (pts[i - 1][1] + pts[i][1]) / 2, ang = Math.atan2(pts[i][1] - pts[i - 1][1], pts[i][0] - pts[i - 1][0]);
+          ctx.save(); ctx.translate(mx, my); ctx.rotate(ang + Math.PI / 2); const s9 = 8 * f;
+          ctx.beginPath(); ctx.moveTo(0, -s9); ctx.lineTo(s9 * 0.8, s9 * 0.75); ctx.lineTo(0, s9 * 0.3); ctx.lineTo(-s9 * 0.8, s9 * 0.75); ctx.closePath();
+          ctx.fillStyle = a.color; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.4 * f; ctx.stroke(); ctx.restore();
+        }
+      }
+      const lblText = a.cat && CATS[a.cat] ? (a.kind === 'line' && !a.label ? '' : `${CATS[a.cat].emoji} ${a.label || CATS[a.cat].short}`) : a.label;
+      if (lblText) {
         let lp;
         if (a.kind === 'line') {   // midpoint by length
           let tot = 0; const seg = []; for (let i = 1; i < pts.length; i++) { const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); seg.push(d); tot += d; }
@@ -1952,7 +2366,7 @@ function drawAnnotations(ctx, b, rx, ry, f) {
           for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const cr = pts[j][0] * pts[i][1] - pts[i][0] * pts[j][1]; A += cr; cx += (pts[j][0] + pts[i][0]) * cr; cy += (pts[j][1] + pts[i][1]) * cr; }
           lp = Math.abs(A) > 1e-6 ? [cx / (3 * A), cy / (3 * A)] : pts[0];
         }
-        texts.push([a.label, lp[0], lp[1], a.color, 13 * f]);
+        texts.push([lblText, lp[0], lp[1], a.cat ? '#1c1c1e' : a.color, 13 * f]);
       }
     } else if (a.kind === 'circle') {
       const c = P(l.getLatLng()), rpx = l.getRadius() / Math.cos(l.getLatLng().lat * DEG) / rx;
@@ -1995,6 +2409,9 @@ async function composeMap(P, prog) {
   Object.entries(serverLayers).forEach(([rf, l]) => steps.push([l._name, p => drawArcExport(ctx, b, W, H, rx, ry, DEM_URL + '/exportImage', { renderingRule: JSON.stringify({ rasterFunction: rf }) }, l.options.opacity, l._name, notes, p)]));
   if (ovActive.ovHydro) { steps.push(['Streams', p => drawTiles(ctx, b, rx, ry, HYDRO_URL, 16, ovActive.ovHydro.options.opacity, 'Streams', notes, p)]); credits.push('Hydrography: USGS NHD'); }
   if (ovActive.ovFema) { steps.push(['Flood zones', p => drawArcExport(ctx, b, W, H, rx, ry, FEMA_URL, null, ovActive.ovFema.options.opacity, 'Flood zones', notes, p)]); credits.push('Flood zones: FEMA NFHL'); }
+  if (land.public) { steps.push(['Public land', p => drawArcExport(ctx, b, W, H, rx, ry, MDC_URL + '/export', null, land.public.options.opacity, 'Public land', notes, p)]); credits.push('Public land: Missouri Dept. of Conservation'); }
+  if (land.plss) { steps.push(['Section lines', p => drawArcExport(ctx, b, W, H, rx, ry, PLSS_URL + '/export', null, land.plss.options.opacity, 'Section lines', notes, p)]); credits.push('PLSS: MO DNR'); }
+  if (land.parcels) { steps.push(['Property lines', p => drawArcExport(ctx, b, W, H, rx, ry, land.parcelSvc + '/export', land.parcelLayers ? { layers: land.parcelLayers } : null, land.parcels.options.opacity, 'Property lines', notes, p)]); credits.push('Parcels: Greene County Assessor'); }
   if (map.hasLayer(labelLayers)) { LABEL_URLS.forEach(u => steps.push(['Labels', p => drawTiles(ctx, b, rx, ry, u, 19, 1, 'Labels', notes, p)])); credits.push('Labels: Esri'); }
   for (let i = 0; i < steps.length; i++) {
     const [name, fn] = steps[i];
@@ -2121,7 +2538,7 @@ $('expGo').addEventListener('click', async () => {
     const title = ($('expTitle').value || 'Terrain map').trim();
     const c = map.getCenter ? { lat: (r.latT + r.latB) / 2, lng: (r.lonL + r.lonR) / 2 } : null;
     const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-    const credits = ['Elevation: USGS 3DEP (NAVD88)'].filter(() => map.hasLayer(terrain) || Object.keys(serverLayers).length).concat(r.credits);
+    const credits = ['Elevation: USGS 3DEP (NAVD88)'].filter(() => map.hasLayer(terrain) || Object.keys(serverLayers).length).concat((S.trees || S.color === 'canopy') && map.hasLayer(terrain) ? ['Tree heights: Meta/WRI CHMv2 (CC BY 4.0)'] : []).concat(r.credits);
     const pdf = buildPdf({
       lay: P.lay, jpeg, imgW: r.canvas.width, imgH: r.canvas.height,
       title, subtitle: `${dateStr}  ·  Center ${c.lat.toFixed(5)}, ${c.lng.toFixed(5)} (WGS 84)`,
@@ -2145,6 +2562,781 @@ $('expGo').addEventListener('click', async () => {
   }
 });
 $('expSave').addEventListener('click', () => { if (exp.pdf) saveFile(exp.pdf, exp.name); });
+
+/* =====================================================================
+   HUNTING & SCOUTING
+   ===================================================================== */
+const CATS = {
+  sighting: { name: 'Deer sighting', short: 'Sighting', emoji: '🦌', color: '#c0392b', geom: 'point', group: 'sight' },
+  route:    { name: 'Deer travel route', short: 'Travel', emoji: '➡️', color: '#e4572e', geom: 'line', group: 'route' },
+  trail:    { name: 'Game trail', short: 'Trail', emoji: '〰️', color: '#8d6e63', geom: 'line', group: 'route', dash: true },
+  rub:      { name: 'Rub', short: 'Rub', emoji: '🪵', color: '#a0522d', geom: 'point', group: 'sign' },
+  scrape:   { name: 'Scrape', short: 'Scrape', emoji: '🐾', color: '#6d4c41', geom: 'point', group: 'sign' },
+  tracks:   { name: 'Tracks / droppings', short: 'Tracks', emoji: '👣', color: '#795548', geom: 'point', group: 'sign' },
+  bed:      { name: 'Bedding area', short: 'Bedding', emoji: '🛏️', color: '#9c7b5b', geom: 'polygon', group: 'habitat' },
+  water:    { name: 'Water', short: 'Water', emoji: '💧', color: '#2d7dd2', geom: 'point', group: 'habitat' },
+  food:     { name: 'Food source', short: 'Food', emoji: '🌰', color: '#c9a227', geom: 'point', group: 'habitat' },
+  foodarea: { name: 'Food plot / field', short: 'Food plot', emoji: '🌾', color: '#c9a227', geom: 'polygon', group: 'habitat' },
+  funnel:   { name: 'Funnel / crossing', short: 'Funnel', emoji: '🔀', color: '#7b5ea7', geom: 'point', group: 'habitat' },
+  stand:    { name: 'Stand / blind', short: 'Stand', emoji: '🪜', color: '#2f6f5e', geom: 'point', group: 'setup' },
+  camera:   { name: 'Trail camera', short: 'Camera', emoji: '📷', color: '#455a64', geom: 'point', group: 'setup' },
+  access:   { name: 'My access route', short: 'Access', emoji: '🥾', color: '#2d7dd2', geom: 'line', group: 'setup', dash: true },
+  parking:  { name: 'Parking', short: 'Parking', emoji: '🅿️', color: '#1c1c1e', geom: 'point', group: 'setup' },
+  sanct:    { name: 'Sanctuary / stay out', short: 'Sanctuary', emoji: '⛔', color: '#c0392b', geom: 'polygon', group: 'setup' },
+  shed:     { name: 'Shed antler', short: 'Shed', emoji: '🦴', color: '#bfa76f', geom: 'point', group: 'sign' },
+  harvest:  { name: 'Harvest', short: 'Harvest', emoji: '🏆', color: '#b8860b', geom: 'point', group: 'sight' },
+  note:     { name: 'Note', short: 'Note', emoji: '📝', color: '#5b5b60', geom: 'point', group: 'other' },
+};
+const CAT_ORDER = ['sighting', 'route', 'rub', 'scrape', 'trail', 'bed', 'water', 'food', 'foodarea', 'funnel', 'stand', 'camera', 'access', 'parking', 'tracks', 'shed', 'harvest', 'sanct', 'note'];
+const DIRS8 = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+const dir8 = deg => DIRS8[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
+const HUNT = { wx: null, planIdx: null, day: 0, cones: store.get('tv_cones') !== '0', coneYd: +(store.get('tv_coneYd') || 300), placing: null, pendingCat: null };
+const inHg = hpa => hpa * 0.0295300;
+const fmtTime = d => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+const fmtDT = d => d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+const localIso = d => { const p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
+const arrowSvg = (deg, color = '#2f6f5e') => `<svg viewBox="0 0 24 24" style="transform:rotate(${deg}deg)"><path d="M12 2 18 20 12 16 6 20Z" fill="${color}"/></svg>`;
+
+function ensureId(l) {
+  if (!l.ann) return;
+  if (!l.ann.id) l.ann.id = uid();
+  if (!l.ann.created) l.ann.created = Date.now();
+}
+function findLayer(id) { let r = null; ann.eachLayer(l => { if (l.ann && l.ann.id === id) r = l; }); return r; }
+function huntLayers(filter) { const out = []; ann.eachLayer(l => { if (l.ann && l.ann.cat && CATS[l.ann.cat] && (!filter || filter(l))) out.push(l); }); return out; }
+
+/* ---------- weather ---------- */
+const WMO = c => c === 0 ? ['Clear', '☀️'] : c <= 1 ? ['Mostly clear', '🌤️'] : c === 2 ? ['Partly cloudy', '⛅'] : c === 3 ? ['Overcast', '☁️'] :
+  c <= 48 ? ['Fog', '🌫️'] : c <= 57 ? ['Drizzle', '🌦️'] : c <= 67 ? ['Rain', '🌧️'] : c <= 77 ? ['Snow', '🌨️'] : c <= 82 ? ['Showers', '🌦️'] : c <= 86 ? ['Snow showers', '🌨️'] : ['Thunderstorms', '⛈️'];
+async function fetchWx(lat, lng) {
+  const v = 'temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m';
+  const q = new URLSearchParams({
+    latitude: lat.toFixed(4), longitude: lng.toFixed(4), current: v,
+    hourly: 'temperature_2m,precipitation_probability,weather_code,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m',
+    daily: 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,sunrise,sunset',
+    temperature_unit: 'fahrenheit', wind_speed_unit: 'mph', precipitation_unit: 'inch', timezone: 'auto', forecast_days: 7, past_days: 1,
+  });
+  const res = await fetch('https://api.open-meteo.com/v1/forecast?' + q);
+  if (!res.ok) throw new Error('weather service HTTP ' + res.status);
+  const j = await res.json();
+  if (j.error) throw new Error(j.reason || 'weather error');
+  const off = (j.utc_offset_seconds || 0) * 1000;
+  const toMs = s => { const [d, t] = s.split('T'); const [Y, M, D2] = d.split('-').map(Number); const [h, m] = (t || '0:0').split(':').map(Number); return Date.UTC(Y, M - 1, D2, h, m) - off; };
+  j.hourly.ms = j.hourly.time.map(toMs);
+  j.daily.ms = j.daily.time.map(toMs);
+  j.lat = lat; j.lng = lng; j.fetched = Date.now();
+  return j;
+}
+function todayIdx(wx) { const t = new Date().toDateString(); const k = wx.daily.ms.findIndex(ms => new Date(ms + 12 * 3600000).toDateString() === t); return k < 0 ? 0 : k; }
+function nowIdx(wx) { const h = wx.hourly.ms, t = Date.now(); let best = 0; for (let i = 0; i < h.length; i++) if (h[i] <= t) best = i; return best; }
+function windAt() {
+  const wx = HUNT.wx; if (!wx) return null;
+  const i = HUNT.planIdx == null ? nowIdx(wx) : HUNT.planIdx;
+  if (HUNT.planIdx == null && wx.current) return { from: wx.current.wind_direction_10m, speed: wx.current.wind_speed_10m, gust: wx.current.wind_gusts_10m, ms: Date.now(), now: true, temp: wx.current.temperature_2m };
+  return { from: wx.hourly.wind_direction_10m[i], speed: wx.hourly.wind_speed_10m[i], gust: wx.hourly.wind_gusts_10m[i], ms: wx.hourly.ms[i], now: false, temp: wx.hourly.temperature_2m[i] };
+}
+function pressureTrend(wx, i) {
+  const p = wx.hourly.pressure_msl; if (i < 3 || p[i] == null || p[i - 3] == null) return { v: p[i], d: 0, label: 'steady' };
+  const d = inHg(p[i] - p[i - 3]);
+  return { v: p[i], d, label: d > 0.02 ? 'rising' : d < -0.02 ? 'falling' : 'steady' };
+}
+let wxLoading = false;
+async function loadWx(lat, lng, quiet) {
+  if (wxLoading) return; wxLoading = true;
+  try {
+    const wx = await fetchWx(lat, lng);
+    HUNT.wx = wx; HUNT.planIdx = null; HUNT.day = todayIdx(wx);
+    store.set('tv_wx', JSON.stringify(wx));
+    afterWx();
+    if (!quiet) msg('Weather updated');
+  } catch (e) {
+    if (!quiet) msg('Could not load weather: ' + e.message, true, 8000);
+    if (!$('huntSheet').hidden && !HUNT.wx) $('wxBody').innerHTML = `<p class="note">Weather unavailable (${esc(e.message)}). Check your connection and try again.</p>`;
+  } finally { wxLoading = false; }
+}
+function afterWx() { renderWindChip(); refreshCones(); refreshStandStatus(); if (!$('huntSheet').hidden) renderHunt(); }
+function wxCenter() { return HUNT.wx ? L.latLng(HUNT.wx.lat, HUNT.wx.lng) : null; }
+function maybeRefreshWx() {
+  const c = map.getCenter(), w = wxCenter();
+  const stale = !HUNT.wx || Date.now() - HUNT.wx.fetched > 30 * 60000;
+  const far = !w || map.distance(c, w) > 25000;
+  if ((stale || far) && map.getZoom() >= 8) loadWx(c.lat, c.lng, true);
+}
+let wxMoveTimer;
+map.on('moveend', () => { clearTimeout(wxMoveTimer); wxMoveTimer = setTimeout(maybeRefreshWx, 1500); });
+setInterval(() => { if (document.visibilityState === 'visible') maybeRefreshWx(); }, 10 * 60000);
+
+function renderWindChip() {
+  const w = windAt(), chip = $('windChip');
+  if (!w) { chip.hidden = true; return; }
+  chip.hidden = false;
+  $('windChipArrow').style.transform = `rotate(${(w.from + 180) % 360}deg)`;
+  $('windChipText').textContent = `${dir8(w.from)} ${Math.round(w.speed)} mph`;
+  $('windChipSub').textContent = (w.gust > w.speed + 4 ? `g${Math.round(w.gust)} · ` : '') + `${Math.round(w.temp)}°` + (w.now ? '' : ' · ' + new Date(w.ms).toLocaleString([], { weekday: 'short', hour: 'numeric' }));
+}
+$('windChip').addEventListener('click', () => openHunt());
+
+/* ---------- sun / moon / solunar ---------- */
+const MOON_NAMES = [[0.03, 'New moon', '🌑'], [0.22, 'Waxing crescent', '🌒'], [0.28, 'First quarter', '🌓'], [0.47, 'Waxing gibbous', '🌔'], [0.53, 'Full moon', '🌕'], [0.72, 'Waning gibbous', '🌖'], [0.78, 'Last quarter', '🌗'], [0.97, 'Waning crescent', '🌘'], [1.01, 'New moon', '🌑']];
+function moonInfo(date) {
+  if (!window.SunCalc) return { name: '—', emoji: '🌙', illum: 0 };
+  const m = SunCalc.getMoonIllumination(date);
+  const n = MOON_NAMES.find(x => m.phase < x[0]);
+  return { name: n[1], emoji: n[2], illum: Math.round(m.fraction * 100), phase: m.phase };
+}
+function solunar(day, lat, lng) {
+  const start = new Date(day); start.setHours(0, 0, 0, 0);
+  let maxA = -9, maxT = null, minA = 9, minT = null;
+  for (let t = 0; t <= 24 * 60; t += 5) {
+    const d = new Date(start.getTime() + t * 60000), a = SunCalc.getMoonPosition(d, lat, lng).altitude;
+    if (a > maxA) { maxA = a; maxT = d; } if (a < minA) { minA = a; minT = d; }
+  }
+  const mt = SunCalc.getMoonTimes(start, lat, lng);
+  const P = [];
+  const add = (kind, label, c, half) => { if (c) P.push({ kind, label, s: new Date(c.getTime() - half), e: new Date(c.getTime() + half), c }); };
+  add('maj', 'Moon overhead', maxT, 3600000); add('maj', 'Moon underfoot', minT, 3600000);
+  add('min', 'Moonrise', mt.rise, 1800000); add('min', 'Moonset', mt.set, 1800000);
+  return { periods: P.sort((a, b) => a.s - b.s), rise: mt.rise, set: mt.set };
+}
+
+/* ---------- hunt sheet rendering ---------- */
+function renderHunt() {
+  const wx = HUNT.wx, body = $('wxBody');
+  if (!wx) { body.innerHTML = '<p class="note">Loading weather…</p>'; renderSun(); return; }
+  const i0 = nowIdx(wx), c = wx.current || {};
+  const [desc, icon] = WMO(c.weather_code ?? wx.hourly.weather_code[i0]);
+  const pt = pressureTrend(wx, i0);
+  const w = windAt();
+  const ago = Math.round((Date.now() - wx.fetched) / 60000);
+  $('wxWhere').textContent = `${wx.lat.toFixed(3)}, ${wx.lng.toFixed(3)} · updated ${ago < 1 ? 'just now' : ago + ' min ago'}`;
+  let h = `<div class="wx-now"><div class="wx-temp">${Math.round(c.temperature_2m)}°</div><div class="wx-desc">${icon} ${desc}<br>Feels ${Math.round(c.apparent_temperature)}° · humidity ${c.relative_humidity_2m}%</div></div>`;
+  h += `<div class="wind-big">${arrowSvg((w.from + 180) % 360)}<div><div class="t">Wind from ${dir8(w.from)} (${Math.round(w.from)}°) · ${Math.round(w.speed)} mph${w.gust > w.speed + 2 ? `, gusts ${Math.round(w.gust)}` : ''}</div>` +
+       `<div class="s">${w.now ? 'Right now' : 'Planned for ' + new Date(w.ms).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric' })} · your scent drifts toward ${dir8(w.from + 180)}</div></div></div>`;
+  h += `<div class="wx-grid"><span>Pressure <b>${inHg(pt.v).toFixed(2)} inHg</b></span><span>3-hr trend <b>${pt.label} ${pt.d >= 0 ? '+' : ''}${pt.d.toFixed(2)}</b></span>` +
+       `<span>Clouds <b>${c.cloud_cover}%</b></span><span>Precip <b>${(c.precipitation || 0).toFixed(2)} in</b></span></div>`;
+  // pressure sparkline: 12 h back, 36 h ahead
+  const a = Math.max(0, i0 - 12), b = Math.min(wx.hourly.ms.length - 1, i0 + 36), ps = wx.hourly.pressure_msl.slice(a, b + 1).map(inHg);
+  if (ps.length > 3) {
+    const lo = Math.min(...ps), hi = Math.max(...ps), W = 300, H = 46, sx = k => k / (ps.length - 1) * W, sy = v => H - 4 - (v - lo) / ((hi - lo) || 0.01) * (H - 10);
+    const nowX = sx(i0 - a);
+    h += `<div class="lbl" style="font-size:11.5px;color:var(--ink-3);display:flex;justify-content:space-between"><span>Pressure, 12 h ago → 36 h ahead</span><span>${lo.toFixed(2)}–${hi.toFixed(2)}</span></div>` +
+         `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><line x1="${nowX}" x2="${nowX}" y1="0" y2="${H}" stroke="#b2382b" stroke-dasharray="3 3"/><path d="${ps.map((v, k) => (k ? 'L' : 'M') + sx(k).toFixed(1) + ',' + sy(v).toFixed(1)).join('')}" fill="none" stroke="#2f6f5e" stroke-width="2"/></svg>`;
+  }
+  // hourly strip: next 48h — tap to plan
+  const sunByDay = {};
+  h += `<div class="lbl" style="font-size:12px;color:var(--ink-2);margin-top:8px;display:flex;justify-content:space-between"><span>Hourly — tap an hour to plan winds</span>${HUNT.planIdx != null ? '<button class="btn small" id="planNow" style="padding:3px 8px">Back to now</button>' : ''}</div><div class="hours" id="hours">`;
+  for (let k = i0; k < Math.min(wx.hourly.ms.length, i0 + 48); k++) {
+    const t = new Date(wx.hourly.ms[k]), dk = t.toDateString();
+    if (!sunByDay[dk] && window.SunCalc) sunByDay[dk] = SunCalc.getTimes(t, wx.lat, wx.lng);
+    const st = sunByDay[dk], legal = st && t.getTime() + 3600000 > st.sunrise.getTime() - 1800000 && t.getTime() < st.sunset.getTime() + 1800000;
+    const on = (HUNT.planIdx == null ? k === i0 : k === HUNT.planIdx);
+    const wd = wx.hourly.wind_direction_10m[k];
+    h += `<div class="hr${on ? ' on' : ''}${legal ? ' legal' : ''}" data-i="${k}"><span class="day">${k === i0 ? 'Now' : t.getHours() === 0 || k === i0 + 1 ? t.toLocaleDateString([], { weekday: 'short' }) : '&nbsp;'}</span><b>${t.toLocaleTimeString([], { hour: 'numeric' }).replace(' ', '').toLowerCase()}</b>` +
+         `${arrowSvg((wd + 180) % 360)}${dir8(wd)} ${Math.round(wx.hourly.wind_speed_10m[k])}<br>${Math.round(wx.hourly.temperature_2m[k])}° · ${wx.hourly.precipitation_probability[k] ?? 0}%</div>`;
+  }
+  h += `</div><p class="note" style="margin-top:0">Green-tinted hours fall inside legal shooting hours (½ hr before sunrise to ½ hr after sunset).</p>`;
+  // 7 days
+  h += `<table class="days">`;
+  wx.daily.ms.forEach((ms, k) => {
+    const d = new Date(ms + 12 * 3600000); if (d.setHours(0, 0, 0, 0) < new Date().setHours(0, 0, 0, 0)) return;
+    const dd = new Date(ms + 12 * 3600000), [, ic] = WMO(wx.daily.weather_code[k]), mi = moonInfo(new Date(ms + 12 * 3600000));
+    const wd = wx.daily.wind_direction_10m_dominant[k];
+    h += `<tr data-d="${k}" class="${HUNT.day === k ? 'on' : ''}"><td>${dd.toLocaleDateString([], { weekday: 'short', day: 'numeric' })}</td><td>${ic}</td><td><b>${Math.round(wx.daily.temperature_2m_max[k])}°</b> / ${Math.round(wx.daily.temperature_2m_min[k])}°</td>` +
+         `<td>${arrowSvg((wd + 180) % 360)} ${dir8(wd)} ${Math.round(wx.daily.wind_speed_10m_max[k])}</td><td>${wx.daily.precipitation_probability_max[k] ?? 0}%</td><td title="${mi.name}">${mi.emoji}</td></tr>`;
+  });
+  h += `</table>`;
+  body.innerHTML = h;
+  body.querySelectorAll('.hr').forEach(el => el.addEventListener('click', () => {
+    const k = +el.dataset.i; HUNT.planIdx = k === i0 ? null : k;
+    const t = new Date(wx.hourly.ms[k]); const di = wx.daily.ms.findIndex(ms => new Date(ms + 12 * 3600000).toDateString() === t.toDateString()); if (di >= 0) HUNT.day = di;
+    const sc = $('hours').scrollLeft; afterWx(); const hrs = $('hours'); if (hrs) hrs.scrollLeft = sc;
+  }));
+  const pn = $('planNow'); if (pn) pn.addEventListener('click', () => { HUNT.planIdx = null; afterWx(); });
+  body.querySelectorAll('.days tr').forEach(tr => tr.addEventListener('click', () => { HUNT.day = +tr.dataset.d; renderHunt(); }));
+  if (HUNT.planIdx != null) { const el = body.querySelector('.hr.on'); if (el) el.scrollIntoView({ block: 'nearest', inline: 'center' }); }
+  renderSun(); renderStandList();
+}
+function renderSun() {
+  const box = $('sunBody'), wx = HUNT.wx;
+  const c = wx ? { lat: wx.lat, lng: wx.lng } : map.getCenter();
+  if (!window.SunCalc) { box.innerHTML = '<p class="note">Sun & moon library did not load.</p>'; return; }
+  const day = wx && wx.daily.ms[HUNT.day] != null ? new Date(wx.daily.ms[HUNT.day] + 12 * 3600000) : new Date();
+  const t = SunCalc.getTimes(day, c.lat, c.lng), mi = moonInfo(day), so = solunar(day, c.lat, c.lng);
+  const legalS = new Date(t.sunrise.getTime() - 1800000), legalE = new Date(t.sunset.getTime() + 1800000), now = Date.now();
+  let h = `<div style="font-size:12.5px;font-weight:600;margin:4px 0">${day.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })}</div>`;
+  h += `<div class="sun-grid"><span>Legal shooting</span><b>${fmtTime(legalS)} – ${fmtTime(legalE)}</b><span>Sunrise / sunset</span><b>${fmtTime(t.sunrise)} / ${fmtTime(t.sunset)}</b>` +
+       `<span>Moonrise / set</span><b>${so.rise ? fmtTime(so.rise) : '—'} / ${so.set ? fmtTime(so.set) : '—'}</b></div>`;
+  h += `<div class="moon-row"><span class="mi">${mi.emoji}</span><div><b>${mi.name}</b><br><span style="font-size:12px;color:var(--ink-2)">${mi.illum}% illuminated</span></div></div>`;
+  h += `<div class="sol">` + so.periods.map(p => {
+    const active = now >= p.s && now <= p.e;
+    return `<div class="${active ? 'now' : ''}"><span class="${p.kind}">${p.kind === 'maj' ? 'Major' : 'Minor'}</span> ${fmtTime(p.s)} – ${fmtTime(p.e)} <span style="color:var(--ink-3)">· ${p.label}</span></div>`;
+  }).join('') + `</div><p class="note">Solunar periods are when the moon is overhead/underfoot (major, ±1 hr) or rising/setting (minor, ±30 min). Always check MDC regulations for season dates.</p>`;
+  box.innerHTML = h;
+}
+function openHunt() {
+  closeSideSheets('huntSheet');
+  $('huntSheet').hidden = false; $('huntBtn').classList.add('on');
+  renderHunt(); syncSheetState();
+  if (!HUNT.wx || Date.now() - HUNT.wx.fetched > 15 * 60000) { const c = map.getCenter(); loadWx(c.lat, c.lng, true); }
+}
+function closeHunt() { $('huntSheet').hidden = true; $('huntBtn').classList.remove('on'); syncSheetState(); }
+$('huntClose').addEventListener('click', closeHunt);
+$('wxHere').addEventListener('click', () => { const c = map.getCenter(); $('wxBody').innerHTML = '<p class="note">Loading weather…</p>'; loadWx(c.lat, c.lng); });
+$('wxGps').addEventListener('click', () => {
+  if (loc.last) { loadWx(loc.last.coords.latitude, loc.last.coords.longitude); return; }
+  msg('Getting your location…', false, 6000); if (loc.watch == null) startLocate();
+  const t0 = Date.now(), iv = setInterval(() => { if (loc.last) { clearInterval(iv); loadWx(loc.last.coords.latitude, loc.last.coords.longitude); } else if (Date.now() - t0 > 30000) clearInterval(iv); }, 500);
+});
+$('conesOn').checked = HUNT.cones;
+$('conesOn').addEventListener('change', e => { HUNT.cones = e.target.checked; store.set('tv_cones', HUNT.cones ? '1' : '0'); refreshCones(); });
+$('coneLen').value = HUNT.coneYd; $('coneLenV').textContent = HUNT.coneYd + ' yd';
+$('coneLen').addEventListener('input', e => { HUNT.coneYd = +e.target.value; $('coneLenV').textContent = HUNT.coneYd + ' yd'; store.set('tv_coneYd', HUNT.coneYd); refreshCones(); });
+
+/* ---------- stands, wind status & scent cones ---------- */
+const cones = L.layerGroup().addTo(map);
+function destPoint(ll, brgDeg, distM) {
+  const d = distM / R_EARTH, b = brgDeg * DEG, la = ll.lat * DEG, lo = ll.lng * DEG;
+  const la2 = Math.asin(Math.sin(la) * Math.cos(d) + Math.cos(la) * Math.sin(d) * Math.cos(b));
+  const lo2 = lo + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(la), Math.cos(d) - Math.sin(la) * Math.sin(la2));
+  return L.latLng(la2 / DEG, lo2 / DEG);
+}
+function conePoints(ll, w) {
+  const down = (w.from + 180) % 360, spread = 18 + Math.min(14, Math.max(0, (w.gust || w.speed) - w.speed)) + (w.speed < 4 ? 14 : 0);
+  const len = HUNT.coneYd * 0.9144, pts = [ll];
+  for (let k = -spread; k <= spread; k += spread / 6) pts.push(destPoint(ll, down + k, len));
+  return pts;
+}
+function standStatus(l) {
+  const w = windAt(), good = l.ann.goodWinds || [];
+  if (!w || !good.length) return 'na';
+  return good.includes(dir8(w.from)) ? 'good' : 'bad';
+}
+function refreshCones() {
+  cones.clearLayers();
+  const w = windAt(); if (!w || !HUNT.cones) return;
+  huntLayers(l => l.ann.cat === 'stand').forEach(l => {
+    L.polygon(conePoints(l.getLatLng(), w), { color: '#ef8a17', weight: 1.5, dashArray: '4 4', fillColor: '#ef8a17', fillOpacity: 0.16, interactive: false }).addTo(cones);
+  });
+}
+function refreshStandStatus() { huntLayers(l => l.ann.cat === 'stand').forEach(l => applyStyle(l)); if (sel && sel.ann.cat === 'stand') renderHuntFields(); }
+function renderStandList() {
+  const box = $('standList'); if (!box) return;
+  const stands = huntLayers(l => l.ann.cat === 'stand'), w = windAt();
+  if (!stands.length) { box.innerHTML = ''; return; }
+  box.innerHTML = stands.map(l => {
+    const s = standStatus(l), nm = l.ann.label || 'Stand';
+    return `<div class="hf-status ${s}" data-id="${l.ann.id}" style="cursor:pointer">${s === 'good' ? '✅' : s === 'bad' ? '❌' : '•'} <b>${esc(nm)}</b> — ${s === 'na' ? 'set its good winds' : s === 'good' ? 'good for ' + dir8(w.from) + ' wind' : 'wrong wind (' + dir8(w.from) + ')'}${(l.ann.goodWinds || []).length ? ` <span style="opacity:.7">[${l.ann.goodWinds.join(' ')}]</span>` : ''}</div>`;
+  }).join('');
+  box.querySelectorAll('[data-id]').forEach(el => el.addEventListener('click', () => { const l = findLayer(el.dataset.id); if (l) { map.setView(l.getLatLng(), Math.max(map.getZoom(), 17)); select(l); } }));
+}
+
+/* ---------- map styling of hunt features ---------- */
+function huntIcon(l, selected) {
+  const a = l.ann, c = CATS[a.cat];
+  const st = a.cat === 'stand' ? standStatus(l) : '';
+  const arrow = a.heading != null && a.heading !== '' ? `<div class="hp-arrow" style="transform:rotate(${a.heading}deg)"><svg viewBox="0 0 18 30"><path d="M9 0 18 13 12 12 12 30 6 30 6 12 0 13Z" fill="${c.color}" stroke="#fff" stroke-width="1.6"/></svg></div>` : '';
+  return L.divIcon({ className: '', iconSize: [34, 34], iconAnchor: [17, 17], html: `<div class="hp${selected ? ' sel' : ''}${st && st !== 'na' ? ' ' + st : ''}" style="--c:${c.color}">${arrow}<div class="hp-dot">${c.emoji}</div></div>` });
+}
+function huntTitle(a) {
+  const c = CATS[a.cat]; if (!c) return a.label || '';
+  if (a.cat === 'sighting') return `${a.count > 1 ? a.count + ' ' : ''}${a.deer || 'Deer'}${a.count > 1 && a.deer && !/s$/.test(a.deer) ? 's' : ''}`;
+  return a.label || c.short;
+}
+function routeArrows(l) {
+  if (!l._arrows) l._arrows = L.layerGroup();
+  l._arrows.clearLayers();
+  if (!map.hasLayer(l)) return;
+  const pts = ringOf(l), c = l.ann.color;
+  for (let i = 1; i < pts.length; i++) {
+    const p0 = map.project(pts[i - 1], 18), p1 = map.project(pts[i], 18);
+    const ang = Math.atan2(p1.x - p0.x, -(p1.y - p0.y)) / DEG;
+    const mid = L.latLng((pts[i - 1].lat + pts[i].lat) / 2, (pts[i - 1].lng + pts[i].lng) / 2);
+    L.marker(mid, { interactive: false, keyboard: false, icon: L.divIcon({ className: 'rt-arrow', iconSize: [18, 18], iconAnchor: [9, 9], html: `<svg width="18" height="18" viewBox="0 0 18 18" style="transform:rotate(${ang}deg)"><path d="M9 1 16 15 9 11 2 15Z" fill="${c}" stroke="#fff" stroke-width="1.5"/></svg>` }) }).addTo(l._arrows);
+  }
+  if (!map.hasLayer(l._arrows)) l._arrows.addTo(map);
+}
+function huntApplyStyle(layer) {
+  const a = layer.ann, c = CATS[a.cat], isSel = layer === sel;
+  a.color = c.color;
+  if (a.kind === 'point') layer.setIcon(huntIcon(layer, isSel));
+  else {
+    const line = a.kind === 'line';
+    layer.setStyle({ color: c.color, weight: line ? (a.cat === 'route' ? 4 : 3) : 2.5, opacity: 1, fillColor: c.color, fillOpacity: line ? 0 : (a.cat === 'sanct' ? 0.18 : 0.25), dashArray: c.dash ? '8 6' : (a.cat === 'sanct' ? '6 4' : null) });
+    if (a.cat === 'route') { routeArrows(layer); if (!layer._arrowHooked) { layer._arrowHooked = true; layer.on('remove', () => layer._arrows && map.removeLayer(layer._arrows)); layer.on('add', () => routeArrows(layer)); layer.on('pm:edit pm:dragend', () => routeArrows(layer)); } }
+    else if (layer._arrows) map.removeLayer(layer._arrows);
+  }
+  if (layer.getTooltip()) layer.unbindTooltip();
+  const showLabel = a.kind === 'polygon' || a.label || a.cat === 'stand' || (a.cat === 'sighting' && a.count > 1);
+  if (showLabel) {
+    const txt = a.kind === 'point' ? huntTitle(a) : `${c.emoji} ${esc(a.label || c.short)}`;
+    layer.bindTooltip(a.kind === 'point' ? esc(txt) : txt, { permanent: true, interactive: false, className: 'hunt-label', direction: a.kind === 'point' ? 'bottom' : 'center', offset: a.kind === 'point' ? [0, 14] : [0, 0], opacity: 1 });
+  }
+}
+
+/* ---------- weather snapshot for a new pin ---------- */
+function wxSnapshot(ll) {
+  const s = { moon: moonInfo(new Date()) };
+  const wx = HUNT.wx;
+  if (wx && map.distance(ll, L.latLng(wx.lat, wx.lng)) < 40000 && Date.now() - wx.fetched < 3 * 3600000) {
+    const i = nowIdx(wx), c = wx.current || {}, pt = pressureTrend(wx, i);
+    Object.assign(s, { t: Math.round(c.temperature_2m ?? wx.hourly.temperature_2m[i]), wd: Math.round(c.wind_direction_10m ?? wx.hourly.wind_direction_10m[i]), ws: Math.round(c.wind_speed_10m ?? wx.hourly.wind_speed_10m[i]), wg: Math.round(c.wind_gusts_10m ?? wx.hourly.wind_gusts_10m[i]), p: +inHg(pt.v).toFixed(2), pt: pt.label, sky: WMO(c.weather_code ?? wx.hourly.weather_code[i])[0] });
+  }
+  s.moon = { name: s.moon.name, emoji: s.moon.emoji, illum: s.moon.illum };
+  return s;
+}
+function snapText(s) {
+  if (!s) return '';
+  const parts = [];
+  if (s.t != null) parts.push(`${s.t}°F, ${s.sky ? s.sky.toLowerCase() : ''}`);
+  if (s.wd != null) parts.push(`wind ${dir8(s.wd)} ${s.ws} mph${s.wg > s.ws + 3 ? ' (g' + s.wg + ')' : ''}`);
+  if (s.p != null) parts.push(`${s.p} inHg ${s.pt}`);
+  if (s.moon) parts.push(`${s.moon.emoji} ${s.moon.name} ${s.moon.illum}%`);
+  return parts.join(' · ');
+}
+function newHuntAnn(cat, kind) {
+  const c = CATS[cat];
+  const a = { kind, cat, id: uid(), created: Date.now(), when: localIso(new Date()), color: c.color, weight: 3, fillOpacity: 0.25, dash: !!c.dash, label: '', size: 18, notes: '', photos: [] };
+  if (cat === 'sighting') Object.assign(a, { deer: 'Doe', count: 1, behavior: 'Traveling', heading: '' });
+  if (cat === 'route') a.tod = 'AM';
+  if (cat === 'stand') Object.assign(a, { standType: 'Tree stand', goodWinds: [] });
+  return a;
+}
+
+/* ---------- scout bar (placing pins) ---------- */
+function buildScoutChips() {
+  $('scoutChips').innerHTML = CAT_ORDER.map(k => { const c = CATS[k]; return `<button class="chip" data-cat="${k}" style="--c:${c.color}"><span class="e">${c.emoji}</span>${c.short}</button>`; }).join('');
+  $('scoutChips').querySelectorAll('.chip').forEach(b => b.addEventListener('click', () => startPlace(b.dataset.cat)));
+}
+function openScout(open) {
+  $('scoutBar').hidden = !open; $('scoutBtn').classList.toggle('on', open);
+  document.body.classList.toggle('scout-open', open);
+  if (!open) cancelPlace();
+  else { openDrawBar(false); closeProfile(); map.closePopup(); if (isMobile()) { setPanel(false); closeSideSheets(); } }
+  syncSheetState();
+}
+const PLACE_HINT = {
+  point: 'Tap the map where it is — or use your GPS position.',
+  line: 'Tap points along the path. Finish when done.',
+  polygon: 'Tap around the area. Finish (or tap the first point) to close.',
+};
+function startPlace(cat) {
+  cancelPlace(); deselect();
+  const c = CATS[cat];
+  HUNT.placing = cat;
+  $('scoutChips').querySelectorAll('.chip').forEach(b => b.classList.toggle('on', b.dataset.cat === cat));
+  $('scoutChips').hidden = true; $('scoutPlacing').hidden = false;
+  $('scoutHint').textContent = `${c.emoji} ${c.name}: ` + (cat === 'route' ? 'tap points in the direction the deer moved, then Finish.' : PLACE_HINT[c.geom]);
+  $('scoutGps').style.display = c.geom === 'point' ? '' : 'none';
+  $('scoutUndo').style.display = c.geom === 'point' ? 'none' : '';
+  $('scoutFinish').style.display = c.geom === 'point' ? 'none' : '';
+  document.body.classList.add('drawing'); map.doubleClickZoom.disable();
+  if (c.geom !== 'point') {
+    HUNT.pendingCat = cat;
+    map.pm.setGlobalOptions({ templineStyle: { color: c.color, weight: 3 }, hintlineStyle: { color: c.color, dashArray: '5,5', weight: 2 }, pathOptions: { color: c.color, weight: 3, fillColor: c.color, fillOpacity: c.geom === 'line' ? 0 : 0.25 } });
+    map.pm.enableDraw(c.geom === 'line' ? 'Line' : 'Polygon', { continueDrawing: false, finishOn: c.geom === 'line' && !isTouch ? 'dblclick' : null });
+  }
+}
+function cancelPlace() {
+  const was = HUNT.placing; HUNT.placing = null;
+  if (HUNT.pendingCat && annDrawing()) map.pm.disableDraw();
+  HUNT.pendingCat = null;
+  $('scoutChips').hidden = false; $('scoutPlacing').hidden = true;
+  $('scoutChips').querySelectorAll('.chip').forEach(b => b.classList.remove('on'));
+  if (was) { document.body.classList.remove('drawing'); setTimeout(() => { if (!HUNT.placing && !curShape && !profile.drawing) map.doubleClickZoom.enable(); }, 400); }
+}
+function placePoint(ll, gpsAcc) {
+  const cat = HUNT.placing; if (!cat) return;
+  const m = L.marker(ll);
+  m.ann = newHuntAnn(cat, 'point');
+  m.ann.wx = wxSnapshot(ll);
+  if (gpsAcc != null) m.ann.gpsAcc = Math.round(gpsAcc);
+  ann.addLayer(m); wireLayer(m); applyStyle(m); saveAnn();
+  cancelPlace(); select(m); refreshCones();
+  msg(`${CATS[cat].name} added`);
+}
+map.on('click', e => { if (HUNT.placing && !HUNT.pendingCat) placePoint(e.latlng); });
+$('scoutGps').addEventListener('click', () => {
+  if (!loc.last) { msg('Getting your location — tap again once the blue dot appears.', false, 7000); if (loc.watch == null) startLocate(); return; }
+  placePoint(L.latLng(loc.last.coords.latitude, loc.last.coords.longitude), loc.last.coords.accuracy);
+});
+$('scoutCancel').addEventListener('click', cancelPlace);
+$('scoutUndo').addEventListener('click', () => { const d = map.pm.Draw[CATS[HUNT.placing]?.geom === 'line' ? 'Line' : 'Polygon']; if (d && d._removeLastVertex) d._removeLastVertex(); });
+$('scoutFinish').addEventListener('click', () => { const d = map.pm.Draw[CATS[HUNT.placing]?.geom === 'line' ? 'Line' : 'Polygon']; if (d && d._finishShape) d._finishShape(); });
+map.on('pm:drawend', () => { if (HUNT.pendingCat) setTimeout(cancelPlace, 0); });
+$('scoutBtn').addEventListener('click', () => openScout($('scoutBar').hidden));
+buildScoutChips();
+if (window.ResizeObserver) new ResizeObserver(() => { const h = $('scoutBar').offsetHeight; if (h) document.documentElement.style.setProperty('--sbh', (h + 6) + 'px'); }).observe($('scoutBar'));
+
+/* ---------- hunt fields inside the shape sheet ---------- */
+function renderHuntFields() {
+  const box = $('huntFields'); if (!sel || !sel.ann.cat) { box.hidden = true; box.innerHTML = ''; return; }
+  const a = sel.ann, c = CATS[a.cat];
+  const sameGeom = CAT_ORDER.filter(k => CATS[k].geom === c.geom);
+  let h = `<div class="stack"><div class="lbl">Type</div><select id="hfCat">${sameGeom.map(k => `<option value="${k}"${k === a.cat ? ' selected' : ''}>${CATS[k].emoji} ${CATS[k].name}</option>`).join('')}</select></div>`;
+  h += `<div class="stack"><div class="lbl">When</div><input type="datetime-local" id="hfWhen" value="${esc(a.when || '')}"></div>`;
+  if (a.cat === 'sighting') {
+    h += `<div class="stack"><div class="lbl">Deer</div><div class="seg" id="hfDeer">${['Buck', 'Doe', 'Fawn', 'Mixed group'].map(v => `<button data-v="${v}" class="${a.deer === v ? 'on' : ''}">${v}</button>`).join('')}</div></div>`;
+    h += `<div class="row"><label for="hfCount">How many</label><input type="number" id="hfCount" min="1" max="99" value="${a.count || 1}" inputmode="numeric"></div>`;
+    h += `<div class="stack"><div class="lbl">Doing</div><select id="hfBeh">${['Traveling', 'Feeding', 'Chasing / rutting', 'Bedded', 'Standing / alert', 'Running'].map(v => `<option${a.behavior === v ? ' selected' : ''}>${v}</option>`).join('')}</select></div>`;
+    h += `<div class="stack"><div class="lbl"><span>Heading (direction it was moving)</span></div><div class="compass" id="hfHead">${DIRS8.map((d, k) => `<button data-v="${k * 45}" class="${String(a.heading) === String(k * 45) ? 'on' : ''}">${d}</button>`).join('')}</div>
+          <div class="btn-row" style="margin:6px 0 0"><button class="btn small" id="hfHeadNone">No direction</button></div></div>`;
+  }
+  if (a.cat === 'route') h += `<div class="stack"><div class="lbl">Time of day</div><div class="seg" id="hfTod">${['AM', 'Midday', 'PM', 'Night'].map(v => `<button data-v="${v}" class="${a.tod === v ? 'on' : ''}">${v}</button>`).join('')}</div><p class="note">Arrows follow the order you drew the points.</p></div>`;
+  if (a.cat === 'stand') {
+    const st = standStatus(sel), w = windAt();
+    h += `<div class="stack"><div class="lbl">Stand type</div><select id="hfStandType">${['Tree stand', 'Ladder stand', 'Saddle', 'Ground blind', 'Box blind'].map(v => `<option${a.standType === v ? ' selected' : ''}>${v}</option>`).join('')}</select></div>`;
+    h += `<div class="stack"><div class="lbl">Good winds (wind coming FROM)</div><div class="compass" id="hfWinds">${DIRS8.map(d => `<button data-v="${d}" class="${(a.goodWinds || []).includes(d) ? 'on' : ''}">${d}</button>`).join('')}</div></div>`;
+    h += `<div class="hf-status ${st}">${!w ? 'Load the weather to check this stand.' : st === 'na' ? `Wind ${w.now ? 'now' : 'then'}: ${dir8(w.from)} ${Math.round(w.speed)} mph — pick the good winds above.` : st === 'good' ? `✅ Good to hunt: wind ${w.now ? 'now' : 'then'} is ${dir8(w.from)} ${Math.round(w.speed)} mph.` : `❌ Wrong wind: ${dir8(w.from)} ${Math.round(w.speed)} mph ${w.now ? 'now' : 'then'}. Your scent blows toward ${dir8(w.from + 180)}.`}</div>`;
+  }
+  h += `<div class="stack"><div class="lbl">Notes</div><textarea id="hfNotes" rows="2" placeholder="What you saw, size, sign details…">${esc(a.notes || '')}</textarea></div>`;
+  h += `<div class="stack"><div class="lbl">Photos</div><div class="photos" id="hfPhotos"></div></div>`;
+  if (a.wx) h += `<div class="stack"><div class="lbl">Conditions when logged</div><div class="snap">${esc(snapText(a.wx)) || '—'}${a.gpsAcc ? `<br>GPS accuracy ±${fmtDist(a.gpsAcc)}` : ''}</div></div>`;
+  box.innerHTML = h; box.hidden = false;
+  const bind = (id, ev, fn) => { const el = $(id); if (el) el.addEventListener(ev, fn); };
+  const changed = () => { applyStyle(sel); saveAnn(); refreshCones(); };
+  bind('hfCat', 'change', e => { a.cat = e.target.value; const fresh = newHuntAnn(a.cat, a.kind); for (const k of ['deer', 'count', 'behavior', 'heading', 'tod', 'standType', 'goodWinds']) if (a[k] === undefined && fresh[k] !== undefined) a[k] = fresh[k]; a.dash = !!CATS[a.cat].dash; changed(); openAnnSheet(); });
+  bind('hfWhen', 'change', e => { a.when = e.target.value; saveAnn(); });
+  bind('hfCount', 'input', e => { a.count = Math.max(1, +e.target.value || 1); changed(); });
+  bind('hfBeh', 'change', e => { a.behavior = e.target.value; saveAnn(); });
+  bind('hfStandType', 'change', e => { a.standType = e.target.value; saveAnn(); });
+  bind('hfNotes', 'input', e => { a.notes = e.target.value; saveAnn(); });
+  bind('hfHeadNone', 'click', () => { a.heading = ''; changed(); renderHuntFields(); });
+  const seg = (id, key) => { const el = $(id); if (!el) return; el.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; a[key] = b.dataset.v; [...el.children].forEach(x => x.classList.toggle('on', x === b)); changed(); }); };
+  seg('hfDeer', 'deer'); seg('hfTod', 'tod');
+  const head = $('hfHead'); if (head) head.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; a.heading = +b.dataset.v; [...head.children].forEach(x => x.classList.toggle('on', x === b)); changed(); });
+  const winds = $('hfWinds'); if (winds) winds.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return; const d = b.dataset.v; a.goodWinds = a.goodWinds || [];
+    a.goodWinds = a.goodWinds.includes(d) ? a.goodWinds.filter(x => x !== d) : DIRS8.filter(x => x === d || a.goodWinds.includes(x));
+    changed(); renderHuntFields(); renderStandList();
+  });
+  renderPhotos();
+}
+
+/* ---------- photos (IndexedDB locally, Google Drive when sync is on) ---------- */
+const idb = (() => {
+  let dbp;
+  const open = () => dbp || (dbp = new Promise((res, rej) => { const r = indexedDB.open('terrain-viewer', 1); r.onupgradeneeded = () => r.result.createObjectStore('photos'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }));
+  const tx = (mode, fn) => open().then(db => new Promise((res, rej) => { const t = db.transaction('photos', mode), req = fn(t.objectStore('photos')); t.oncomplete = () => res(req ? req.result : undefined); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); }));
+  return { get: k => tx('readonly', s => s.get(k)), put: (k, v) => tx('readwrite', s => s.put(v, k)), del: k => tx('readwrite', s => s.delete(k)) };
+})();
+async function resizePhoto(file, max = 1600) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('Could not read that image')); i.src = url; });
+    const s = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+    const cv = document.createElement('canvas'); cv.width = Math.round(img.naturalWidth * s); cv.height = Math.round(img.naturalHeight * s);
+    cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+    return cv.toDataURL('image/jpeg', 0.82);
+  } finally { URL.revokeObjectURL(url); }
+}
+const photoCache = new Map();
+async function photoSrc(p) {
+  if (photoCache.has(p.id)) return photoCache.get(p.id);
+  let d = null;
+  try { d = await idb.get(p.id); } catch (e) {}
+  if (!d && p.drive && syncReady()) {
+    try { const r = await api({ action: 'photo_get', drive: p.drive }); d = `data:${r.mime || 'image/jpeg'};base64,${r.data}`; idb.put(p.id, d).catch(() => {}); } catch (e) { return null; }
+  }
+  if (d) photoCache.set(p.id, d);
+  return d;
+}
+async function renderPhotos() {
+  const box = $('hfPhotos'); if (!box || !sel) return;
+  const a = sel.ann, list = a.photos || [];
+  box.innerHTML = list.map((p, k) => `<button class="ph" data-k="${k}"><span class="x" data-del="${k}">✕</span></button>`).join('') + `<button class="add" id="hfAddPhoto"><span>📷</span>Add photo</button>`;
+  box.querySelectorAll('.ph').forEach(async el => { const src = await photoSrc(list[+el.dataset.k]); if (src) el.style.backgroundImage = `url("${src}")`; else el.textContent = '…'; });
+  box.addEventListener('click', async e => {
+    const del = e.target.closest('[data-del]');
+    if (del) {
+      e.stopPropagation();
+      const p = list[+del.dataset.del]; a.photos = list.filter((_, i) => i !== +del.dataset.del);
+      idb.del(p.id).catch(() => {}); photoCache.delete(p.id);
+      if (p.drive && syncReady()) api({ action: 'photo_del', drive: p.drive }).catch(() => {});
+      saveAnn(); renderPhotos(); return;
+    }
+    const ph = e.target.closest('.ph');
+    if (ph) { const src = await photoSrc(list[+ph.dataset.k]); if (src) { $('photoImg').src = src; $('photoView').hidden = false; } return; }
+    if (e.target.closest('#hfAddPhoto')) $('photoInput').click();
+  }, { once: true });
+}
+$('photoInput').addEventListener('change', async e => {
+  const files = [...e.target.files]; e.target.value = '';
+  if (!sel || !files.length) return;
+  const target = sel;
+  for (const f of files) {
+    try {
+      const d = await resizePhoto(f); const id = uid();
+      await idb.put(id, d); photoCache.set(id, d);
+      target.ann.photos = (target.ann.photos || []).concat([{ id }]);
+    } catch (err) { msg('Photo failed: ' + err.message, true); }
+  }
+  saveAnn(); if (sel === target) renderPhotos();
+  msg('Photo saved' + (syncReady() ? ' — uploading on next sync' : ''));
+});
+$('photoClose').addEventListener('click', () => { $('photoView').hidden = true; $('photoImg').src = ''; });
+$('photoView').addEventListener('click', e => { if (e.target.id === 'photoView') $('photoClose').click(); });
+
+/* ---------- scouting log ---------- */
+const LOG_FILTERS = [['all', 'All'], ['sight', 'Sightings'], ['sign', 'Sign'], ['habitat', 'Water & food'], ['route', 'Routes & trails'], ['setup', 'Stands & cams']];
+let logFilter = 'all';
+function whenMs(a) { const t = a.when ? new Date(a.when).getTime() : a.created; return isFinite(t) ? t : (a.created || 0); }
+function renderLog() {
+  if ($('logSheet').hidden) return;
+  $('logFilters').innerHTML = LOG_FILTERS.map(([k, n]) => `<button data-f="${k}" class="${logFilter === k ? 'on' : ''}">${n}</button>`).join('');
+  const q = $('logSearch').value.trim().toLowerCase();
+  const items = huntLayers(l => (logFilter === 'all' || CATS[l.ann.cat].group === logFilter) && (!q || `${l.ann.label} ${l.ann.notes} ${CATS[l.ann.cat].name} ${l.ann.deer || ''}`.toLowerCase().includes(q)))
+    .sort((x, y) => whenMs(y.ann) - whenMs(x.ann));
+  $('logCount').textContent = `${items.length} ${items.length === 1 ? 'entry' : 'entries'}${logFilter !== 'all' ? ' · ' + LOG_FILTERS.find(f => f[0] === logFilter)[1].toLowerCase() : ''}`;
+  $('logList').innerHTML = items.length ? items.map(l => {
+    const a = l.ann, c = CATS[a.cat], t = new Date(whenMs(a));
+    const extra = [a.cat === 'sighting' ? a.behavior : '', a.wx && a.wx.wd != null ? `wind ${dir8(a.wx.wd)} ${a.wx.ws}` : '', a.wx && a.wx.t != null ? a.wx.t + '°' : '', (a.photos || []).length ? '📷 ' + a.photos.length : ''].filter(Boolean).join(' · ');
+    return `<div class="log-item" data-id="${a.id}"><span class="e" style="--c:${c.color}">${c.emoji}</span><div><div class="t">${esc(a.kind === 'point' ? huntTitle(a) : (a.label || c.name))}${a.label && a.cat === 'sighting' ? ' — ' + esc(a.label) : ''}</div>` +
+      `<div class="s">${c.name} · ${fmtDT(t)}${extra ? '<br>' + esc(extra) : ''}${a.notes ? '<br>' + esc(a.notes.slice(0, 90)) + (a.notes.length > 90 ? '…' : '') : ''}</div></div>${(a.photos || []).length ? `<span class="th" data-p="${a.id}"></span>` : ''}</div>`;
+  }).join('') : '<p class="note">Nothing logged yet. Tap the pin button and pick what you found.</p>';
+  $('logList').querySelectorAll('.log-item').forEach(el => el.addEventListener('click', () => {
+    const l = findLayer(el.dataset.id); if (!l) return;
+    if (l.getLatLng) map.setView(l.getLatLng(), Math.max(map.getZoom(), 17)); else map.fitBounds(l.getBounds(), { maxZoom: 18, padding: [40, 40] });
+    select(l);
+  }));
+  $('logList').querySelectorAll('.th').forEach(async el => { const l = findLayer(el.dataset.p); if (!l) return; const src = await photoSrc(l.ann.photos[0]); if (src) el.style.backgroundImage = `url("${src}")`; });
+  renderLogStats(items);
+}
+function renderLogStats(items) {
+  const s = items.filter(l => l.ann.cat === 'sighting');
+  if (!s.length) { $('logStats').innerHTML = '<p class="note">Log a few deer sightings to see patterns by wind and time of day.</p>'; return; }
+  const byWind = new Array(8).fill(0), byTime = { 'Dawn (5–9)': 0, 'Midday (9–15)': 0, 'Dusk (15–19)': 0, 'Night': 0 }; let deer = 0;
+  s.forEach(l => {
+    const a = l.ann, n = +a.count || 1; deer += n;
+    if (a.wx && a.wx.wd != null) byWind[DIRS8.indexOf(dir8(a.wx.wd))] += n;
+    const h = new Date(whenMs(a)).getHours();
+    byTime[h >= 5 && h < 9 ? 'Dawn (5–9)' : h >= 9 && h < 15 ? 'Midday (9–15)' : h >= 15 && h < 19 ? 'Dusk (15–19)' : 'Night'] += n;
+  });
+  const mx = Math.max(1, ...byWind);
+  $('logStats').innerHTML = `<div style="font-size:12.5px;margin:4px 0">${deer} deer in ${s.length} sightings</div>` +
+    `<div style="font-size:12px;color:var(--ink-2)">Deer seen by wind direction</div><div class="stat-bars">${byWind.map(v => `<div style="height:${Math.round(v / mx * 100)}%"><span>${v || ''}</span></div>`).join('')}</div><div class="stat-lbls">${DIRS8.map(d => `<span>${d}</span>`).join('')}</div>` +
+    `<div class="sun-grid" style="margin-top:10px">${Object.entries(byTime).map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join('')}</div>`;
+}
+function openLog() { closeSideSheets('logSheet'); $('logSheet').hidden = false; $('logBtn').classList.add('on'); renderLog(); syncSheetState(); }
+function closeLog() { $('logSheet').hidden = true; $('logBtn').classList.remove('on'); syncSheetState(); }
+$('logBtn').addEventListener('click', () => $('logSheet').hidden ? openLog() : closeLog());
+$('logClose').addEventListener('click', closeLog);
+$('logFilters').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; logFilter = b.dataset.f; renderLog(); });
+$('logSearch').addEventListener('input', renderLog);
+$('logCsv').addEventListener('click', () => {
+  const rows = [['type', 'when', 'name', 'deer', 'count', 'behavior', 'heading', 'lat', 'lng', 'temp_f', 'wind_from', 'wind_mph', 'pressure_inhg', 'pressure_trend', 'moon', 'notes', 'photos']];
+  huntLayers().sort((x, y) => whenMs(x.ann) - whenMs(y.ann)).forEach(l => {
+    const a = l.ann, p = l.getLatLng ? l.getLatLng() : l.getBounds().getCenter(), w = a.wx || {};
+    rows.push([CATS[a.cat].name, a.when || '', a.label || '', a.deer || '', a.count || '', a.behavior || '', a.heading !== '' && a.heading != null ? dir8(a.heading) : '', p.lat.toFixed(6), p.lng.toFixed(6), w.t ?? '', w.wd != null ? dir8(w.wd) : '', w.ws ?? '', w.p ?? '', w.pt || '', w.moon ? w.moon.name + ' ' + w.moon.illum + '%' : '', a.notes || '', (a.photos || []).length]);
+  });
+  const csv = rows.map(r => r.map(v => /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : v).join(',')).join('\n');
+  saveFile(new Blob([csv], { type: 'text/csv' }), 'scouting-log.csv');
+});
+
+/* ---------- side-sheet coordination ---------- */
+function closeSideSheets(except) {
+  if (except !== 'huntSheet' && !$('huntSheet').hidden) closeHunt();
+  if (except !== 'logSheet' && !$('logSheet').hidden) closeLog();
+  if (except && except !== 'annSheet' && sel) deselect();
+  if (except && isMobile()) { setPanel(false); if (!$('scoutBar').hidden && except) { /* keep scout bar */ } }
+}
+$('huntBtn').addEventListener('click', () => $('huntSheet').hidden ? openHunt() : closeHunt());
+
+/* =====================================================================
+   HUNTING LAND LAYERS
+   ===================================================================== */
+const MDC_URL = 'https://gisblue.mdc.mo.gov/arcgis/rest/services/Discover_Nature/MDC_Administrative_Areas/MapServer';
+const PLSS_URL = 'https://gis.dnr.mo.gov/host/rest/services/boundary/plss_layer/MapServer';
+const PARCEL_ROOT = 'https://greenecountyassessor.org/arcgis/rest/services';
+const PARCEL_FALLBACK = PARCEL_ROOT + '/ParcelPublicAccessJan82026/MapServer';
+const land = { public: null, parcels: null, plss: null, parcelSvc: null, parcelLayers: null };
+function landOpacity() { return +$('landOp').value; }
+function parseSvcDate(name) {
+  const m = name.match(/([A-Za-z]+)(\d{1,2})(\d{4})$/); if (!m) return 0;
+  const t = Date.parse(`${m[1].slice(0, 3)} ${m[2]} ${m[3]}`); return isFinite(t) ? t : 0;
+}
+async function resolveParcels() {
+  const custom = (store.get('tv_parcelUrl') || '').trim().replace(/\/+$/, '');
+  let svc = custom || null;
+  const status = t => { $('parcelStatus').textContent = t; };
+  if (!svc) {
+    try {
+      const j = await (await fetch(PARCEL_ROOT + '?f=json')).json();
+      const names = (j.services || []).filter(s => /^ParcelPublicAccess/i.test(s.name) && /MapServer/i.test(s.type)).map(s => s.name);
+      names.sort((a, b) => parseSvcDate(b) - parseSvcDate(a));
+      if (names.length) svc = `${PARCEL_ROOT}/${names[0]}/MapServer`;
+    } catch (e) { /* fall back */ }
+  }
+  svc = svc || PARCEL_FALLBACK;
+  let layers = null;
+  try {
+    const j = await (await fetch(svc + '?f=json')).json();
+    const ids = (j.layers || []).filter(l => /parcel/i.test(l.name) && !/label|anno|text|dim/i.test(l.name) && (!l.subLayerIds || !l.subLayerIds.length)).map(l => l.id);
+    if (ids.length) layers = 'show:' + ids.join(',');
+    status(`Using ${svc.split('/services/')[1] || svc}${ids.length ? '' : ' (all layers)'}`);
+  } catch (e) { status(`Using ${svc.split('/services/')[1] || svc} — could not read its layer list (${e.message}).`); }
+  land.parcelSvc = svc; land.parcelLayers = layers;
+  return { svc, layers };
+}
+async function toggleLand(key, on) {
+  if (land[key]) { map.removeLayer(land[key]); land[key] = null; }
+  if (!on) return;
+  const op = landOpacity();
+  if (key === 'public') { land.public = new ArcTileLayer(MDC_URL + '/export', null, { pane: 'over', opacity: op, minZoom: 6, maxZoom: 21, maxNativeZoom: 18, attribution: 'MDC' }).addTo(map); if (map.getZoom() < 12) msg('Zoom in to level 12+ to see conservation area boundaries'); }
+  if (key === 'plss') { land.plss = new ArcTileLayer(PLSS_URL + '/export', null, { pane: 'over', opacity: op, minZoom: 10, maxZoom: 21, maxNativeZoom: 18, attribution: 'MO DNR' }).addTo(map); }
+  if (key === 'parcels') {
+    msg('Finding the latest parcel map…', false, 4000);
+    const { svc, layers } = await resolveParcels();
+    if (!$('ovParcels').checked) return;
+    land.parcels = new ArcTileLayer(svc + '/export', layers ? { layers } : null, { pane: 'over', opacity: op, minZoom: 13, maxZoom: 21, maxNativeZoom: 19, attribution: 'Greene County Assessor' }).addTo(map);
+    let errs = 0; land.parcels.on('tileerror', () => { if (++errs === 6) msg('Parcel map is not responding — the county server may be down. Try again later.', true, 9000); });
+    if (map.getZoom() < 13) msg('Zoom in to level 13+ to see property lines');
+  }
+}
+[['ovPublic', 'public'], ['ovParcels', 'parcels'], ['ovPlss', 'plss']].forEach(([id, key]) => $(id).addEventListener('change', e => toggleLand(key, e.target.checked)));
+$('landOp').addEventListener('input', e => { $('landOpV').textContent = Math.round(e.target.value * 100) + '%'; ['public', 'parcels', 'plss'].forEach(k => land[k] && land[k].setOpacity(+e.target.value)); });
+$('parcelUrl').value = store.get('tv_parcelUrl') || '';
+$('parcelUrl').addEventListener('change', e => { store.set('tv_parcelUrl', e.target.value.trim()); if ($('ovParcels').checked) toggleLand('parcels', true); });
+
+async function identify(base, ll, layers) {
+  const b = map.getBounds(), sz = map.getSize();
+  const q = new URLSearchParams({ geometry: `${ll.lng},${ll.lat}`, geometryType: 'esriGeometryPoint', sr: 4326, layers: layers || 'visible', tolerance: 3,
+    mapExtent: [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].join(','), imageDisplay: `${sz.x},${sz.y},96`, returnGeometry: 'false', f: 'json' });
+  const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 9000);
+  try { const j = await (await fetch(base + '/identify?' + q, { signal: ctl.signal })).json(); return j.results || []; } finally { clearTimeout(t); }
+}
+async function landInfoHtml(ll) {
+  const jobs = [];
+  if (land.public) jobs.push(identify(MDC_URL, ll, 'all').then(rs => {
+    const r = rs.find(x => /conservation|natural|mrap|lands/i.test(x.layerName)) || rs[0]; if (!r) return '';
+    const at = r.attributes || {}, name = at.Area_Name || at.OFF_Name || at.Name || r.value, link = at.Sum_Link || at.Map_Link;
+    const acres = at.Acreage || at.Acres_GIS;
+    return `<div><b>🌲 ${esc(name)}</b><br><span class="pop-sub">${esc(r.layerName)}${acres ? ' · ' + Math.round(+acres).toLocaleString() + ' acres' : ''}</span>${link && /^https?:/.test(link) ? `<br><a href="${esc(link)}" target="_blank" rel="noopener">Area page &amp; regulations ↗</a>` : ''}</div>`;
+  }).catch(() => ''));
+  if (land.parcels) jobs.push(identify(land.parcelSvc, ll, land.parcelLayers ? land.parcelLayers.replace('show:', 'all:') : 'visible').then(rs => {
+    const r = rs.find(x => /parcel/i.test(x.layerName)) || rs[0]; if (!r) return '';
+    const at = r.attributes || {}, keys = Object.keys(at).filter(k => at[k] && at[k] !== 'Null' && !/shape|objectid|globalid|^fid$/i.test(k));
+    const pick = re => keys.filter(k => re.test(k));
+    const show = [...new Set([...pick(/own/i), ...pick(/acre|area/i), ...pick(/parcel|pin|apn|account/i), ...pick(/addr|situs/i)])].slice(0, 6);
+    return `<div><b>🏠 Property</b>${show.map(k => `<br><span class="pop-sub">${esc(k.replace(/_/g, ' '))}:</span> ${esc(String(at[k]).slice(0, 60))}`).join('') || '<br>' + esc(r.value || '')}</div>`;
+  }).catch(() => '<div class="pop-sub">Property info unavailable (county server not responding)</div>'));
+  const parts = (await Promise.all(jobs)).filter(Boolean);
+  return parts.length ? `<div class="pop-land">${parts.join('<div style="height:6px"></div>')}</div>` : '';
+}
+
+/* =====================================================================
+   SYNC (Google Sheet via Apps Script)
+   ===================================================================== */
+const SYNC = { url: store.get('tv_syncUrl') || '', token: store.get('tv_syncToken') || '', seq: +(store.get('tv_syncSeq') || 0), last: +(store.get('tv_syncLast') || 0), busy: false, again: false, timer: null };
+let dirty = new Set(); try { dirty = new Set(JSON.parse(store.get('tv_dirty') || '[]')); } catch (e) {}
+let tomb = {}; try { tomb = JSON.parse(store.get('tv_tomb') || '{}'); } catch (e) {}
+const snap = new Map();
+function syncReady() { return !!(SYNC.url && SYNC.token); }
+function featureSig(f) { const p = Object.assign({}, f.properties); delete p.updated; return JSON.stringify([f.geometry, p]); }
+function persistSyncState() { store.set('tv_dirty', JSON.stringify([...dirty])); store.set('tv_tomb', JSON.stringify(tomb)); store.set('tv_syncSeq', String(SYNC.seq)); store.set('tv_syncLast', String(SYNC.last)); }
+function initSnap() { ann.eachLayer(l => { if (!l.ann) return; const had = !!l.ann.id; ensureId(l); if (!l.ann.updated) l.ann.updated = l.ann.created; snap.set(l.ann.id, featureSig(layerToFeature(l))); if (!had) dirty.add(l.ann.id); }); persistSyncState(); }
+function trackChanges() {
+  const now = Date.now(), seen = new Set();
+  ann.eachLayer(l => {
+    if (!l.ann) return; ensureId(l);
+    const id = l.ann.id; seen.add(id);
+    const sig = featureSig(layerToFeature(l));
+    if (snap.get(id) !== sig) { l.ann.updated = now; snap.set(id, sig); dirty.add(id); delete tomb[id]; }
+  });
+  for (const id of [...snap.keys()]) if (!seen.has(id)) { snap.delete(id); tomb[id] = now; dirty.add(id); }
+  persistSyncState();
+}
+function setSyncStatus(t, err) { const el = $('syncStatus'); el.textContent = t; el.className = 'sync-status' + (err ? ' err' : ''); }
+function syncSummary() {
+  if (!syncReady()) return 'Not set up — everything is saved on this device only.';
+  const n = ann.getLayers().filter(l => l.ann).length;
+  return SYNC.last ? `Synced ${fmtDT(new Date(SYNC.last))} · ${n} items${dirty.size ? ` · ${dirty.size} waiting` : ''}` : `Ready · ${dirty.size} change${dirty.size === 1 ? '' : 's'} waiting`;
+}
+async function api(payload) {
+  const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 60000);
+  try {
+    const res = await fetch(SYNC.url, { method: 'POST', body: JSON.stringify(Object.assign({ token: SYNC.token }, payload)), headers: { 'Content-Type': 'text/plain;charset=utf-8' }, redirect: 'follow', signal: ctl.signal });
+    const txt = await res.text(); let j;
+    try { j = JSON.parse(txt); } catch (e) { throw new Error(/<html/i.test(txt) ? 'the web app returned a sign-in page — check it is deployed with access "Anyone"' : 'unexpected reply from the web app'); }
+    if (!j.ok) throw new Error(j.error || 'request failed');
+    return j;
+  } catch (e) { if (e.name === 'AbortError') throw new Error('timed out'); if (e instanceof TypeError) throw new Error('could not reach the web app (offline or wrong URL)'); throw e; }
+  finally { clearTimeout(t); }
+}
+async function uploadPhotos() {
+  for (const l of huntLayers(l => (l.ann.photos || []).some(p => !p.drive))) {
+    for (const p of l.ann.photos) {
+      if (p.drive) continue;
+      const d = await idb.get(p.id).catch(() => null); if (!d) continue;
+      const m = d.match(/^data:([^;]+);base64,(.*)$/); if (!m) continue;
+      const r = await api({ action: 'photo_put', id: p.id, mime: m[1], data: m[2] });
+      p.drive = r.drive;
+    }
+  }
+}
+function applyRemote(rows) {
+  let changed = 0;
+  for (const r of rows) {
+    const local = findLayer(r.id);
+    if (r.deleted) {
+      if (local && (local.ann.updated || 0) <= r.updated) { if (local === sel) deselect(); ann.removeLayer(local); snap.delete(r.id); dirty.delete(r.id); changed++; }
+      if (tomb[r.id] && tomb[r.id] <= r.updated) { delete tomb[r.id]; dirty.delete(r.id); }
+      continue;
+    }
+    if (tomb[r.id] && tomb[r.id] >= r.updated) continue;            // deleted here more recently
+    if (local && (local.ann.updated || 0) >= r.updated) continue;    // ours is newer or same
+    const l = featureToLayer(r.feature); if (!l) continue;
+    if (local) { if (local === sel) deselect(); ann.removeLayer(local); }
+    l.ann.updated = r.updated; ann.addLayer(l); wireLayer(l); applyStyle(l);
+    snap.set(r.id, featureSig(layerToFeature(l))); dirty.delete(r.id); delete tomb[r.id];
+    changed++;
+  }
+  if (changed) { store.set('tv_ann', JSON.stringify(annToGeoJSON())); refreshCones(); renderLog(); renderStandList(); }
+  return changed;
+}
+async function syncNow(manual) {
+  if (!syncReady()) { if (manual) setSyncStatus('Enter the web app URL and token first.', true); return; }
+  if (SYNC.busy) { SYNC.again = true; return; }
+  if (!navigator.onLine) { setSyncStatus('Offline — changes will sync when you are back online. ' + syncSummary()); return; }
+  SYNC.busy = true; setSyncStatus('Syncing…');
+  try {
+    flushSave();
+    await uploadPhotos();
+    trackChanges();
+    const changes = [...dirty].map(id => {
+      const l = findLayer(id);
+      if (l) return { id, updated: l.ann.updated, deleted: false, feature: layerToFeature(l) };
+      if (tomb[id]) return { id, updated: tomb[id], deleted: true };
+      return null;
+    }).filter(Boolean);
+    const sent = new Map(changes.map(c => [c.id, c.updated]));
+    const r = await api({ action: 'sync', since: SYNC.seq, changes });
+    for (const [id, u] of sent) { const l = findLayer(id); const cur = l ? l.ann.updated : tomb[id]; if (cur === u) dirty.delete(id); }
+    const n = applyRemote(r.rows || []);
+    SYNC.seq = r.seq || SYNC.seq; SYNC.last = Date.now(); persistSyncState();
+    setSyncStatus(syncSummary());
+    if (manual) msg(`Synced — sent ${changes.length}, received ${n}`);
+  } catch (e) {
+    setSyncStatus('Sync failed: ' + e.message, true);
+    if (manual) msg('Sync failed: ' + e.message, true, 9000);
+  } finally {
+    SYNC.busy = false; persistSyncState();
+    if (SYNC.again) { SYNC.again = false; scheduleSync(1500); }
+  }
+}
+function scheduleSync(ms = 5000) { if (!syncReady()) return; clearTimeout(SYNC.timer); SYNC.timer = setTimeout(() => syncNow(false), ms); }
+$('syncUrl').value = SYNC.url; $('syncToken').value = SYNC.token;
+$('syncSave').addEventListener('click', () => {
+  const u = $('syncUrl').value.trim(), t = $('syncToken').value.trim();
+  if (u && !/^https:\/\/script\.google(usercontent)?\.com\//.test(u)) { setSyncStatus('That does not look like an Apps Script web app URL (it should start with https://script.google.com/macros/s/).', true); return; }
+  if (u !== SYNC.url) { SYNC.seq = 0; ann.eachLayer(l => { if (l.ann && l.ann.id) dirty.add(l.ann.id); }); }
+  SYNC.url = u; SYNC.token = t; store.set('tv_syncUrl', u); store.set('tv_syncToken', t);
+  syncNow(true);
+});
+$('syncNowBtn').addEventListener('click', () => syncNow(true));
+window.addEventListener('online', () => scheduleSync(1000));
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') scheduleSync(800); });
+setInterval(() => { if (document.visibilityState === 'visible') scheduleSync(0); }, 5 * 60000);
 
 /* =====================================================================
    On-screen keyboard: keep the open sheet above it (iOS Safari)
@@ -2171,9 +3363,14 @@ setBase('esriImg');
 terrain.setOpacity(S.opacity);
 terrain.addTo(map);
 $('lrmR').value = toDisp(S.lrmRange).toFixed(1);
-syncRangeInputs(); updateVisibility(); updateLegend();
+syncRangeInputs(); updateVisibility(); updateLegend(); syncTreeAttribution();
 if (!window.GeoTIFF) msg('GeoTIFF library failed to load — terrain layer unavailable. Use "USGS ready-made layers".', true, 0);
-window.__tv = { map, ann, exportPlan, composeMap, buildPdf, openExport, S, loc };
+try { const s = store.get('tv_ann'); if (s) loadFeatures(JSON.parse(s)); } catch (e) { console.warn(e); }
+initSnap(); refreshCones();
+try { const w = JSON.parse(store.get('tv_wx') || 'null'); if (w && Date.now() - w.fetched < 6 * 3600000) { HUNT.wx = w; HUNT.day = todayIdx(w); afterWx(); } } catch (e) {}
+setTimeout(maybeRefreshWx, 1200);
+setSyncStatus(syncSummary()); scheduleSync(2000);
+window.__tv = { CHM, terrain, map, ann, exportPlan, composeMap, buildPdf, openExport, S, loc, HUNT, CATS, syncNow, findLayer, huntLayers, windAt, land, SYNC, dirty: () => dirty, tomb: () => tomb, applyRemote, idb };
 })();
 </script>
 </body>
