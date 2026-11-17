@@ -147,12 +147,17 @@
 
   /* ---------- Export frame ---------- */
   #frame{position:absolute;z-index:900;pointer-events:none;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,0.35), 0 0 0 9999px rgba(20,20,22,0.38);border-radius:2px;display:none}
-  #frame .corner{position:absolute;width:16px;height:16px;border-color:var(--accent);border-style:solid}
-  #frame .tl{left:-4px;top:-4px;border-width:4px 0 0 4px}
-  #frame .tr{right:-4px;top:-4px;border-width:4px 4px 0 0}
-  #frame .bl{left:-4px;bottom:-4px;border-width:0 0 4px 4px}
-  #frame .br{right:-4px;bottom:-4px;border-width:0 4px 4px 0}
-  #frame .flabel{position:absolute;left:0;top:-26px;font-size:11.5px;color:#fff;font-weight:600;text-shadow:0 1px 3px rgba(0,0,0,0.6);white-space:nowrap}
+  #frame .h{position:absolute;width:30px;height:30px;margin:-15px 0 0 -15px;pointer-events:auto;touch-action:none;display:grid;place-items:center;z-index:2}
+  #frame .h::after{content:"";width:13px;height:13px;border-radius:50%;background:#fff;border:3px solid var(--accent);box-shadow:0 1px 4px rgba(0,0,0,0.4);transition:transform .12s}
+  #frame .h:hover::after, #frame .h.active::after{transform:scale(1.25)}
+  #frame .h-n,#frame .h-s{left:50%;cursor:ns-resize} #frame .h-e,#frame .h-w{top:50%;cursor:ew-resize}
+  #frame .h-n::after,#frame .h-s::after{width:22px;height:9px;border-radius:6px}
+  #frame .h-e::after,#frame .h-w::after{width:9px;height:22px;border-radius:6px}
+  #frame .h-nw{left:0;top:0;cursor:nwse-resize} #frame .h-ne{left:100%;top:0;cursor:nesw-resize}
+  #frame .h-se{left:100%;top:100%;cursor:nwse-resize} #frame .h-sw{left:0;top:100%;cursor:nesw-resize}
+  #frame .h-n{top:0} #frame .h-s{top:100%} #frame .h-e{left:100%} #frame .h-w{left:0}
+  @media (pointer: coarse){ #frame .h{width:44px;height:44px;margin:-22px 0 0 -22px} }
+  #frame .flabel{position:absolute;left:20px;top:-28px;font-size:11.5px;color:#fff;font-weight:600;text-shadow:0 1px 3px rgba(0,0,0,0.6);white-space:nowrap}
   body.exporting #panel, body.exporting #drawBar, body.exporting #profile, body.exporting #annSheet{display:none !important}
   .exp-info{font-size:12px;color:var(--ink-2);line-height:1.6;background:rgba(118,118,128,0.08);border-radius:10px;padding:8px 10px;font-variant-numeric:tabular-nums}
   .exp-info b{color:var(--ink)}
@@ -263,7 +268,7 @@
 <div id="crosshair"></div>
 <div id="saProbe"></div>
 <div id="toast" hidden></div>
-<div id="frame"><span class="flabel" id="frameLabel"></span><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></div>
+<div id="frame"><span class="flabel" id="frameLabel"></span><i class="h h-nw" data-h="nw"></i><i class="h h-n" data-h="n"></i><i class="h h-ne" data-h="ne"></i><i class="h h-e" data-h="e"></i><i class="h h-se" data-h="se"></i><i class="h h-s" data-h="s"></i><i class="h h-sw" data-h="sw"></i><i class="h h-w" data-h="w"></i></div>
 
 <!-- ================= Layers panel ================= -->
 <aside id="panel" class="glass sheet">
@@ -456,9 +461,17 @@
         <option value="tabloid">Tabloid 11 × 17 in</option>
         <option value="a4">A4</option>
         <option value="a3">A3</option>
+        <option value="custom">Custom — drag the frame</option>
       </select>
+      <div class="note" id="expPageNote">Tip: drag the frame's corners or edges to set a custom size.</div>
     </div>
-    <div class="stack"><div class="seg" id="expOrient"><button data-v="land" class="on">Landscape</button><button data-v="port">Portrait</button></div></div>
+    <div id="customCtl" hidden>
+      <div class="stack"><div class="seg" id="custMode"><button data-v="len" class="on">Set paper size</button><button data-v="scale">Set map scale</button></div></div>
+      <div class="row" id="custLenRow"><label for="custLen">Long side of map (in)</label><input type="number" id="custLen" min="2" max="100" step="0.5" value="10" inputmode="decimal"></div>
+      <div class="row" id="custScaleRow" hidden><label for="custScale">1 in on paper =</label><span style="display:flex;align-items:center;gap:6px"><input type="number" id="custScale" min="1" step="10" value="200" inputmode="decimal"> ft</span></div>
+      <p class="note" id="custNote">Drag the frame to set the area and shape; the paper size stays fixed and the scale adjusts.</p>
+    </div>
+    <div class="stack" id="orientRow"><div class="seg" id="expOrient"><button data-v="land" class="on">Landscape</button><button data-v="port">Portrait</button></div></div>
     <div class="stack"><div class="lbl">Quality</div><div class="seg" id="expDpi"><button data-v="150">150 dpi</button><button data-v="200" class="on">200 dpi</button><button data-v="300">300 dpi</button></div></div>
     <div class="exp-info" id="expInfo"></div>
     <div id="expProgress" hidden><span id="expProgText">Working…</span><div class="bar"><i id="expBar"></i></div></div>
@@ -1627,14 +1640,32 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && profile.dr
    GEOPDF EXPORT
    ===================================================================== */
 const PAGES = { letter: [8.5, 11], tabloid: [11, 17], a4: [8.27, 11.69], a3: [11.69, 16.54] };
-const exp = { on: false, page: 'letter', orient: 'land', dpi: 200, margins: true, frame: null, pdf: null, name: '' };
+const exp = { on: false, page: 'letter', orient: 'land', dpi: 200, margins: true, frame: null, pdf: null, name: '', cf: null, custom: { mode: 'len', len: 10, scaleFt: 200 } };
 const MAX_PX = 16e6;   // keeps phones within canvas limits
+const MARG = { m: 0.35 * 72, head: 0.5 * 72, foot: 0.82 * 72 };
 
+function groundWidthOfFrame() {
+  const b = frameMerc(), latC = y2lat((b.Y0 + b.Y1) / 2);
+  return (b.X1 - b.X0) * Math.cos(latC * DEG);
+}
+function customMapInches() {       // [width, height] of the map area in inches
+  const f = exp.frame, asp = f.w / f.h;
+  let w, h;
+  if (exp.custom.mode === 'len') { const L = Math.max(2, Math.min(100, exp.custom.len || 10)); [w, h] = asp >= 1 ? [L, L / asp] : [L * asp, L]; }
+  else { const scale = Math.max(1, exp.custom.scaleFt || 200) * 12; w = groundWidthOfFrame() / scale / 0.0254; h = w / asp; }
+  return [w, h];
+}
 function pageLayout() {
-  const [a, b] = PAGES[exp.page], land = exp.orient === 'land';
+  if (exp.page === 'custom' && exp.frame) {
+    const [wi, hi] = customMapInches(), mw = wi * 72, mh = hi * 72;
+    if (!exp.margins) return { W: mw, H: mh, mx: 0, my: 0, mw, mh, bare: true };
+    const { m, head, foot } = MARG;
+    return { W: mw + 2 * m, H: mh + 2 * m + head + foot, m, head, foot, mx: m, my: m + foot, mw, mh };
+  }
+  const [a, b] = PAGES[exp.page === 'custom' ? 'letter' : exp.page], land = exp.orient === 'land';
   const W = (land ? b : a) * 72, H = (land ? a : b) * 72;
   if (!exp.margins) return { W, H, mx: 0, my: 0, mw: W, mh: H, bare: true };
-  const m = 0.35 * 72, head = 0.5 * 72, foot = 0.82 * 72;
+  const { m, head, foot } = MARG;
   return { W, H, m, head, foot, mx: m, my: m + foot, mw: W - 2 * m, mh: H - 2 * m - head - foot };
 }
 function safeInsets() {
@@ -1644,7 +1675,7 @@ function safeInsets() {
 function availRect() {
   const c = map.getContainer().getBoundingClientRect(), sa = safeInsets();
   let l = 12 + sa.l, t = 34 + sa.t, r = c.width - 12 - sa.r, b = c.height - 12 - sa.b;
-  const tb = $('toolbar').getBoundingClientRect(); r = Math.min(r, tb.left - 10);
+  const tb = $('toolbar').getBoundingClientRect(); r = Math.min(r, tb.left - 20);
   const sh = $('exportSheet');
   if (!sh.hidden) {
     const s = sh.getBoundingClientRect();
@@ -1655,15 +1686,77 @@ function availRect() {
   if (getComputedStyle(st).display !== 'none') b = Math.min(b, st.getBoundingClientRect().top - 30);
   return { l, t, r, b };
 }
+function applyFrame(r) {
+  exp.frame = r;
+  const f = $('frame'); f.style.left = r.x + 'px'; f.style.top = r.y + 'px'; f.style.width = r.w + 'px'; f.style.height = r.h + 'px';
+}
+function clampRect(r, A) {
+  let { x, y, w, h } = r;
+  w = Math.min(w, A.r - A.l); h = Math.min(h, A.b - A.t);
+  x = Math.max(A.l, Math.min(x, A.r - w)); y = Math.max(A.t, Math.min(y, A.b - h));
+  return { x, y, w, h };
+}
 function placeFrame() {
-  const lay = pageLayout(), A = availRect();
-  const aw = A.r - A.l, ah = A.b - A.t, asp = lay.mw / lay.mh;
-  let w = aw, h = aw / asp; if (h > ah) { h = ah; w = ah * asp; }
-  const x = A.l + (aw - w) / 2, y = A.t + (ah - h) / 2;
-  exp.frame = { x, y, w, h };
-  const f = $('frame'); f.style.left = x + 'px'; f.style.top = y + 'px'; f.style.width = w + 'px'; f.style.height = h + 'px';
+  const A = availRect();
+  if (exp.page === 'custom') {
+    if (!exp.cf) exp.cf = exp.frame ? { ...exp.frame } : { x: A.l, y: A.t, w: A.r - A.l, h: A.b - A.t };
+    exp.cf = clampRect(exp.cf, A);
+    applyFrame(exp.cf);
+  } else {
+    const lay = pageLayout();
+    const aw = A.r - A.l, ah = A.b - A.t, asp = lay.mw / lay.mh;
+    let w = aw, h = aw / asp; if (h > ah) { h = ah; w = ah * asp; }
+    applyFrame({ x: A.l + (aw - w) / 2, y: A.t + (ah - h) / 2, w, h });
+  }
   updateExportInfo();
 }
+function showCustomUI() {
+  const c = exp.page === 'custom';
+  $('customCtl').hidden = !c; $('orientRow').hidden = c; $('expPageNote').hidden = c;
+  [...$('custMode').children].forEach(b => b.classList.toggle('on', b.dataset.v === exp.custom.mode));
+  $('custLenRow').hidden = exp.custom.mode !== 'len'; $('custScaleRow').hidden = exp.custom.mode !== 'scale';
+  $('custLen').value = +(+exp.custom.len).toFixed(1); $('custScale').value = Math.round(exp.custom.scaleFt);
+  $('custNote').textContent = exp.custom.mode === 'len'
+    ? 'Drag the frame to set the area and shape; the paper size stays fixed and the scale adjusts.'
+    : 'Drag the frame to set the area and shape; the scale stays fixed and the paper grows or shrinks to fit.';
+}
+function switchToCustom() {
+  if (exp.page !== 'custom' && exp.frame) {
+    const lay = pageLayout();
+    exp.custom.len = +(Math.max(lay.mw, lay.mh) / 72).toFixed(1);
+  }
+  exp.page = 'custom'; $('expPage').value = 'custom';
+  exp.cf = exp.frame ? { ...exp.frame } : null;
+  showCustomUI();
+}
+// --- drag handles ---
+let fdrag = null, fdragRaf = 0;
+$('frame').addEventListener('pointerdown', e => {
+  const h = e.target.closest('.h'); if (!h || !exp.on) return;
+  e.preventDefault(); e.stopPropagation();
+  if (exp.page !== 'custom') switchToCustom();
+  try { h.setPointerCapture(e.pointerId); } catch (_) {}
+  h.classList.add('active');
+  fdrag = { el: h, dir: h.dataset.h, sx: e.clientX, sy: e.clientY, r: { ...exp.frame } };
+  $('expResult').hidden = true; $('expGo').hidden = false;
+});
+window.addEventListener('pointermove', e => {
+  if (!fdrag) return;
+  e.preventDefault();
+  const MIN = 60, A = availRect(), d = fdrag.dir;
+  const dx = e.clientX - fdrag.sx, dy = e.clientY - fdrag.sy;
+  let { x, y, w, h } = fdrag.r;
+  let L = x, T = y, R = x + w, B = y + h;
+  if (d.includes('w')) L = Math.min(R - MIN, Math.max(A.l, L + dx));
+  if (d.includes('e')) R = Math.max(L + MIN, Math.min(A.r, R + dx));
+  if (d.includes('n')) T = Math.min(B - MIN, Math.max(A.t, T + dy));
+  if (d.includes('s')) B = Math.max(T + MIN, Math.min(A.b, B + dy));
+  exp.cf = { x: L, y: T, w: R - L, h: B - T };
+  applyFrame(exp.cf);
+  if (!fdragRaf) fdragRaf = requestAnimationFrame(() => { fdragRaf = 0; updateExportInfo(); });
+}, { passive: false });
+const endDrag = () => { if (!fdrag) return; fdrag.el.classList.remove('active'); fdrag = null; updateExportInfo(); };
+window.addEventListener('pointerup', endDrag); window.addEventListener('pointercancel', endDrag);
 function frameMerc() {
   const f = exp.frame;
   const tl = map.containerPointToLatLng([f.x, f.y]), br = map.containerPointToLatLng([f.x + f.w, f.y + f.h]);
@@ -1680,6 +1773,7 @@ function exportPlan() {
   const scale = groundW / (inW * 0.0254);
   return { lay, b, dpi, pxW, pxH, latC, groundW, scale, res: groundW / pxW };
 }
+function fmtIn(v) { return v >= 10 ? v.toFixed(1).replace(/\.0$/, '') : v.toFixed(2).replace(/0$/, '').replace(/\.0$/, ''); }
 function niceNum(v) { const p = Math.pow(10, Math.floor(Math.log10(v))), m = v / p; return (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * p; }
 function updateExportInfo() {
   if (!exp.frame) return;
@@ -1690,8 +1784,10 @@ function updateExportInfo() {
   $('expInfo').innerHTML =
     `Scale <b>1:${Math.round(P.scale).toLocaleString()}</b> · 1 in = <b>${inchFt < 5280 ? Math.round(inchFt).toLocaleString() + ' ft' : (inchFt / 5280).toFixed(2) + ' mi'}</b><br>` +
     `Area <b>${fmtDist(P.groundW)}</b> wide · detail <b>${resTxt}</b>/pixel<br>` +
-    `Image <b>${P.pxW.toLocaleString()} × ${P.pxH.toLocaleString()}</b> px${P.dpi < exp.dpi ? ` <span style="color:var(--danger)">(capped at ${P.dpi} dpi)</span>` : ''}`;
-  $('frameLabel').textContent = `${exp.page === 'letter' ? 'Letter' : exp.page === 'tabloid' ? 'Tabloid' : exp.page.toUpperCase()} · 1:${Math.round(P.scale).toLocaleString()}`;
+    `Page <b>${fmtIn(P.lay.W / 72)} × ${fmtIn(P.lay.H / 72)} in</b> · image <b>${P.pxW.toLocaleString()} × ${P.pxH.toLocaleString()}</b> px${P.dpi < exp.dpi ? ` <span style="color:var(--danger)">(capped at ${P.dpi} dpi)</span>` : ''}` +
+    (Math.max(P.lay.W, P.lay.H) / 72 > 48 ? '<br><span style="color:var(--danger)">That is a very large page — most printers top out at 24–36 in wide.</span>' : '');
+  const pname = { letter: 'Letter', tabloid: 'Tabloid', a4: 'A4', a3: 'A3' }[exp.page] || `Custom ${fmtIn(P.lay.W / 72)} × ${fmtIn(P.lay.H / 72)} in`;
+  $('frameLabel').textContent = `${pname} · 1:${Math.round(P.scale).toLocaleString()}`;
   const zt = Math.log2(WORLD / 256 / (P.res / Math.cos(P.latC * DEG)));
   $('expGo').disabled = false;
   if (zt < 4) $('expInfo').innerHTML += '<br><span style="color:var(--danger)">Area is very large — zoom in for a useful map.</span>';
@@ -1701,6 +1797,7 @@ function openExport(fitBounds) {
   exp.on = true; exp.pdf = null;
   document.body.classList.add('exporting');
   $('expMore').open = !isMobile();
+  showCustomUI();
   $('exportSheet').hidden = false; $('frame').style.display = 'block';
   $('expResult').hidden = true; $('expProgress').hidden = true; $('expGo').hidden = false;
   $('exportBtn').classList.add('on');
@@ -1728,7 +1825,24 @@ if (window.ResizeObserver) {
 }
 $('expMore').addEventListener('toggle', () => { if (exp.on) requestAnimationFrame(placeFrame); });
 map.on('move zoom', () => { if (exp.on) { updateExportInfo(); $('expResult').hidden = true; $('expGo').hidden = false; } });
-$('expPage').addEventListener('change', e => { exp.page = e.target.value; placeFrame(); });
+$('expPage').addEventListener('change', e => {
+  if (e.target.value === 'custom') switchToCustom();
+  else { exp.page = e.target.value; exp.cf = null; showCustomUI(); }
+  placeFrame();
+});
+$('custMode').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.v === 'scale' && exp.custom.mode !== 'scale' && exp.frame) {
+    const inchFt = exportPlan().scale * 0.0254 * M2FT;      // keep the current look when switching
+    exp.custom.scaleFt = inchFt > 20 ? niceNum(inchFt) : Math.max(1, Math.round(inchFt));
+  }
+  if (b.dataset.v === 'len' && exp.custom.mode !== 'len' && exp.frame) {
+    const lay = pageLayout(); exp.custom.len = +(Math.max(lay.mw, lay.mh) / 72).toFixed(1);
+  }
+  exp.custom.mode = b.dataset.v; showCustomUI(); updateExportInfo();
+});
+$('custLen').addEventListener('input', e => { const v = +e.target.value; if (v >= 2 && v <= 100) { exp.custom.len = v; updateExportInfo(); } });
+$('custScale').addEventListener('input', e => { const v = +e.target.value; if (v >= 1) { exp.custom.scaleFt = v; updateExportInfo(); } });
 $('expMargins').addEventListener('change', e => { exp.margins = e.target.checked; placeFrame(); });
 [['expOrient', 'orient'], ['expDpi', 'dpi']].forEach(([id, key]) => {
   $(id).addEventListener('click', e => {
@@ -1931,8 +2045,9 @@ function buildPdf(o) {
     C(`BT /F1 8 Tf 0.36 0.36 0.38 rg ${n2(mx)} ${n2(H - m - 28)} Td ${pdfStr(o.subtitle)} Tj ET`);
     // scale bar (feet / miles)
     const ptsPerM = mw / o.groundW;
-    let L = niceNum(1.8 * 72 / ptsPerM * M2FT), unit = 'ft', Lm = L / M2FT;
-    if (L >= 5280) { L = niceNum(1.8 * 72 / ptsPerM / 1609.344); unit = 'mi'; Lm = L * 1609.344; }
+    const barIn = Math.min(1.8, mw / 72 * 0.28);
+    let L = niceNum(barIn * 72 / ptsPerM * M2FT), unit = 'ft', Lm = L / M2FT;
+    if (L >= 5280) { L = niceNum(barIn * 72 / ptsPerM / 1609.344); unit = 'mi'; Lm = L * 1609.344; }
     const barW = Lm * ptsPerM, bx = mx, by = m + 30, bh = 5;
     for (let i = 0; i < 4; i++) C(`${i % 2 ? '1 1 1' : '0.15 0.15 0.15'} rg 0.15 0.15 0.15 RG 0.5 w ${n2(bx + i * barW / 4)} ${n2(by)} ${n2(barW / 4)} ${n2(bh)} re B`);
     const lbl = v => (unit === 'mi' && v < 1 ? (+v.toFixed(2)) : Math.round(v * 100) / 100).toLocaleString('en-US');
