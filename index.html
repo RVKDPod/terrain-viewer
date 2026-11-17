@@ -462,7 +462,7 @@
         <label for="treesOn">Treeshade <span style="color:var(--ink-3);font-size:12px">— shade the tree tops in 3D</span></label>
         <label class="switch"><input type="checkbox" id="treesOn"><span></span></label>
       </div>
-      <p class="note" id="treeNote" style="display:none;margin-top:0">Tree heights come from Meta/WRI's 1 m canopy model (estimated from satellite photos, typically within a few meters). Shows at zoom 12+.</p>
+      <p class="note" id="treeNote" style="display:none;margin-top:0"></p>
       <div id="sunCtl">
         <div class="stack" id="azRow"><div class="lbl"><span>Sun direction</span><span class="val" id="azV">315°</span></div>
           <input type="range" id="az" min="0" max="360" step="5" value="315"></div>
@@ -532,17 +532,17 @@
     <details>
       <summary>Hunting land</summary>
       <label class="check"><input type="checkbox" id="ovPublic"> Public land <small>MDC areas &amp; MRAP</small></label>
-      <label class="check"><input type="checkbox" id="ovParcels"> Property lines <small>Greene Co. assessor</small></label>
+      <label class="check"><input type="checkbox" id="ovParcels"> Property lines &amp; owners <small>Greene, Christian, Webster, Wright, Douglas</small></label>
       <label class="check"><input type="checkbox" id="ovPlss"> Section lines <small>PLSS, MO DNR</small></label>
       <div class="stack"><div class="lbl"><span>Opacity</span><span class="val" id="landOpV">80%</span></div>
         <input type="range" id="landOp" min="0.2" max="1" step="0.05" value="0.8"></div>
       <p class="note">Tap the map to see the landowner or area name. Public land shows from zoom 12+. Always confirm boundaries and permission before hunting.</p>
       <details style="border:none;padding:0">
-        <summary style="text-transform:none;letter-spacing:0;font-size:12px">Use a different county's parcel map</summary>
-        <div class="stack"><div class="lbl">ArcGIS MapServer URL (leave blank for Greene County)</div>
+        <summary style="text-transform:none;letter-spacing:0;font-size:12px">Add another county's parcel map</summary>
+        <div class="stack"><div class="lbl">ArcGIS MapServer URL (added to the five counties)</div>
           <input type="text" id="parcelUrl" placeholder="https://…/arcgis/rest/services/…/MapServer" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
-        <div class="sync-status" id="parcelStatus"></div>
       </details>
+      <div class="sync-status" id="parcelStatus"></div>
     </details>
 
     <details>
@@ -1020,7 +1020,7 @@ function renderTile(canvas, r) {
   const flat = cosZ;
   const shadeMode = S.shade, colorMode = S.color, k = S.strength;
   const lut = colorMode === 'elev' ? RAMPS[S.ramp] : colorMode === 'slope' ? RAMPS.slope : colorMode === 'lrm' ? RAMPS.lrm : colorMode === 'canopy' ? RAMPS.canopy : null;
-  const surf = S.trees && r.chm ? surfaceOf(r) : data, chm = r.chm, canMax = 30;
+  const surf = S.trees && (r.chm || r.lidar) ? surfaceOf(r) : data, canMax = 30;
   const eMin = S.eMin, eSpan = (S.eMax - S.eMin) || 1, sMax = S.slopeMax;
   let lrm = null;
   if (colorMode === 'lrm') {
@@ -1055,8 +1055,8 @@ function renderTile(canvas, r) {
       let R, G, B;
       if (colorMode === 'none') { const v = shadeMode === 'none' ? 200 : shade * 255; R = G = B = v; }
       else {
-        if (colorMode === 'elev') { let t = (e - eMin) / eSpan; t = t < 0 ? 0 : t > 1 ? 1 : t; const li = (t * 255 | 0) * 3; R = lut[li]; G = lut[li + 1]; B = lut[li + 2]; }
-        else if (colorMode === 'canopy') { let t = chm ? chm[idx] / canMax : 0; t = t > 1 ? 1 : t; const li = (t * 255 | 0) * 3; R = lut[li]; G = lut[li + 1]; B = lut[li + 2]; }
+        if (colorMode === 'elev') { let t = ((S.trees ? e0 : e) - eMin) / eSpan; t = t < 0 ? 0 : t > 1 ? 1 : t; const li = (t * 255 | 0) * 3; R = lut[li]; G = lut[li + 1]; B = lut[li + 2]; }
+        else if (colorMode === 'canopy') { let t = chmAt(r, idx) / canMax; t = t > 1 ? 1 : t; const li = (t * 255 | 0) * 3; R = lut[li]; G = lut[li + 1]; B = lut[li + 2]; }
         else if (colorMode === 'slope') { let t = Math.atan(grad) / DEG / sMax; t = t > 1 ? 1 : t; const li = (t * 255 | 0) * 3; R = lut[li]; G = lut[li + 1]; B = lut[li + 2]; }
         else if (colorMode === 'aspect') {
           let comp = 90 - asp / DEG; comp = ((comp % 360) + 360) % 360;
@@ -1069,6 +1069,176 @@ function renderTile(canvas, r) {
     }
   }
   ctx.putImageData(img, 0, 0);
+}
+
+/* =====================================================================
+   LIDAR TREESHADE — USGS 3DEP point clouds (Entwine Point Tiles on AWS)
+   The newest lidar flight covering a tile is read straight from the
+   public bucket, decoded with laz-perf (WASM), and the highest return in
+   each pixel becomes the surface (tree tops, buildings, ground in gaps).
+   ===================================================================== */
+const SWMO_EPT = [{"n":"MO_7Co_1_D23","y":2023,"b":[-94.135,36.801,-90.762,38.95],"p":[[[-90.955,36.801],[-90.888,36.807],[-90.883,36.826],[-90.901,36.838],[-90.883,36.863],[-90.941,36.882],[-90.991,36.876],[-90.991,36.913],[-91.009,36.925],[-90.991,36.938],[-90.991,36.975],[-91.022,37.019],[-91.049,37.006],[-91.193,37.006],[-91.211,37.019],[-91.211,37.056],[-91.341,37.05],[-91.422,37.062],[-91.453,37.043],[-91.453,37.006],[-91.435,36.994],[-91.453,36.969],[-91.507,36.956],[-91.507,36.882],[-91.489,36.869],[-91.292,36.882],[-91.238,36.869],[-91.233,36.813],[-91.049,36.807],[-91.022,36.82],[-90.955,36.801]],[[-93.744,37.267],[-93.672,37.279],[-93.636,37.267],[-93.618,37.279],[-93.623,37.322],[-93.605,37.335],[-93.609,37.699],[-93.591,37.711],[-93.591,37.748],[-93.623,37.754],[-93.623,37.816],[-93.569,37.816],[-93.569,37.865],[-93.551,37.877],[-93.551,37.902],[-93.497,37.902],[-93.515,37.914],[-93.497,37.926],[-93.497,38.061],[-93.111,38.061],[-93.084,38.049],[-93.052,38.067],[-93.052,38.19],[-93.07,38.202],[-93.07,38.373],[-93.052,38.385],[-93.057,38.72],[-93.039,38.732],[-93.039,38.926],[-93.057,38.938],[-93.497,38.95],[-93.502,38.932],[-93.538,38.932],[-93.556,38.944],[-93.794,38.938],[-93.821,38.95],[-93.865,38.914],[-93.946,38.926],[-94.121,38.92],[-94.117,38.889],[-94.135,38.877],[-94.135,38.562],[-94.077,38.556],[-94.081,38.208],[-94.063,38.196],[-94.094,37.291],[-94.009,37.273],[-93.771,37.279],[-93.744,37.267]],[[-91.328,37.329],[-91.17,37.322],[-91.17,37.397],[-91.153,37.409],[-91.09,37.397],[-90.995,37.415],[-90.928,37.397],[-90.923,37.588],[-90.762,37.6],[-90.766,37.656],[-90.802,37.656],[-90.856,37.68],[-90.874,37.705],[-90.914,37.686],[-90.964,37.705],[-91.022,37.674],[-91.085,37.674],[-91.126,37.656],[-91.126,37.619],[-91.139,37.613],[-91.144,37.705],[-91.126,37.73],[-91.085,37.736],[-91.085,38.006],[-91.126,38.012],[-91.13,38.03],[-91.157,38.043],[-91.157,38.067],[-91.197,38.073],[-91.251,38.049],[-91.224,38.012],[-91.319,38.006],[-91.314,37.951],[-91.26,37.951],[-91.26,37.926],[-91.278,37.914],[-91.26,37.902],[-91.26,37.84],[-91.278,37.828],[-91.278,37.803],[-91.319,37.785],[-91.314,37.705],[-91.355,37.711],[-91.422,37.693],[-91.422,37.656],[-91.44,37.643],[-91.44,37.557],[-91.409,37.539],[-91.409,37.489],[-91.44,37.471],[-91.435,37.415],[-91.4,37.403],[-91.359,37.421],[-91.341,37.458],[-91.314,37.471],[-91.319,37.502],[-91.301,37.514],[-91.22,37.477],[-91.238,37.415],[-91.274,37.415],[-91.292,37.378],[-91.332,37.359],[-91.328,37.329]]],"c":124174944972},{"n":"MO_SouthernMO_1_D22","y":2022,"b":[-93.613,36.62,-89.997,37.303],"p":[[[-90.123,36.62],[-90.083,36.651],[-90.065,36.701],[-90.038,36.713],[-90.056,36.726],[-90.038,36.738],[-90.056,36.751],[-90.024,36.782],[-90.024,36.819],[-90.056,36.863],[-90.145,36.875],[-90.15,36.894],[-90.199,36.9],[-90.204,36.919],[-90.186,36.931],[-90.204,36.944],[-90.11,36.975],[-90.092,37.0],[-90.069,36.993],[-90.002,37.024],[-89.997,37.043],[-90.105,37.043],[-90.096,37.08],[-90.145,37.074],[-90.15,37.055],[-90.199,37.037],[-90.199,37.012],[-90.226,37.0],[-90.244,36.962],[-90.267,36.956],[-90.267,36.981],[-90.285,36.993],[-90.258,37.043],[-90.307,37.049],[-90.312,37.068],[-90.334,37.074],[-90.352,37.062],[-90.339,37.043],[-90.393,37.031],[-90.375,37.055],[-90.419,37.105],[-90.419,37.142],[-90.446,37.155],[-90.428,37.167],[-90.487,37.211],[-90.482,37.229],[-90.442,37.235],[-90.442,37.272],[-90.46,37.297],[-90.482,37.303],[-90.5,37.279],[-90.536,37.291],[-90.554,37.279],[-90.527,37.266],[-90.523,37.235],[-90.554,37.229],[-90.568,37.173],[-90.514,37.161],[-90.509,37.142],[-90.541,37.111],[-90.5,37.093],[-90.496,37.062],[-90.455,37.055],[-90.473,37.043],[-90.46,37.012],[-90.509,37.018],[-90.514,37.0],[-90.46,36.962],[-90.455,36.944],[-90.406,36.937],[-90.388,36.913],[-90.271,36.913],[-90.271,36.863],[-90.226,36.838],[-90.217,36.776],[-90.159,36.707],[-90.163,36.638],[-90.123,36.62]],[[-93.343,36.813],[-93.312,36.819],[-93.285,36.807],[-93.258,36.819],[-93.231,36.807],[-93.177,36.819],[-93.123,36.807],[-93.043,36.819],[-92.899,36.807],[-92.899,37.093],[-93.231,37.093],[-93.249,37.08],[-93.474,37.08],[-93.519,37.105],[-93.608,37.093],[-93.613,37.0],[-93.595,36.987],[-93.343,36.987],[-93.339,36.894],[-93.357,36.869],[-93.339,36.857],[-93.343,36.813]],[[-92.4,37.049],[-92.265,37.049],[-92.239,37.062],[-92.252,37.08],[-92.234,37.093],[-92.239,37.211],[-92.423,37.192],[-92.454,37.173],[-92.697,37.136],[-92.692,37.055],[-92.427,37.062],[-92.4,37.049]]],"c":23525805525},{"n":"MO_Southwest_1_2021","y":2021,"b":[-94.623,36.481,-93.298,37.296],"p":[[[-93.545,36.481],[-93.527,36.493],[-93.5,36.481],[-93.473,36.493],[-93.42,36.481],[-93.316,36.487],[-93.298,36.512],[-93.298,36.824],[-93.33,36.83],[-93.33,36.992],[-93.357,37.005],[-93.599,37.005],[-93.599,37.29],[-94.053,37.296],[-94.053,37.271],[-94.071,37.259],[-94.066,37.067],[-94.084,37.054],[-94.619,37.06],[-94.623,36.768],[-94.565,36.749],[-94.408,36.756],[-94.39,36.743],[-94.313,36.749],[-94.286,36.737],[-94.259,36.749],[-94.242,36.737],[-94.111,36.743],[-94.084,36.731],[-94.053,36.749],[-94.057,36.917],[-94.039,36.93],[-93.985,36.917],[-93.626,36.917],[-93.626,36.818],[-93.581,36.805],[-93.599,36.493],[-93.545,36.481]]],"c":49979325202},{"n":"MO_Southwest_2_2021","y":2021,"b":[-94.633,37.335,-94.036,38.483],"p":[[[-94.215,37.335],[-94.197,37.347],[-94.081,37.335],[-94.081,37.36],[-94.063,37.372],[-94.067,37.871],[-94.049,37.883],[-94.054,38.11],[-94.036,38.122],[-94.036,38.22],[-94.067,38.226],[-94.067,38.422],[-94.049,38.446],[-94.094,38.47],[-94.197,38.452],[-94.229,38.47],[-94.265,38.458],[-94.31,38.483],[-94.615,38.483],[-94.615,38.092],[-94.633,38.08],[-94.633,38.018],[-94.615,38.006],[-94.633,37.994],[-94.633,37.773],[-94.615,37.76],[-94.633,37.748],[-94.633,37.489],[-94.615,37.477],[-94.633,37.465],[-94.633,37.366],[-94.575,37.347],[-94.39,37.353],[-94.373,37.341],[-94.242,37.347],[-94.215,37.335]]],"c":45028687789},{"n":"MO_FEMANRCS_1_2020","y":2020,"b":[-95.118,36.469,-89.292,39.563],"p":[[[-93.339,36.481],[-93.232,36.469],[-93.214,36.481],[-93.187,36.469],[-93.106,36.481],[-93.052,36.469],[-92.998,36.481],[-92.917,36.469],[-92.89,36.481],[-92.76,36.475],[-92.76,36.812],[-92.814,36.825],[-92.877,36.812],[-92.895,36.837],[-93.038,36.837],[-93.056,36.825],[-93.083,36.837],[-93.321,36.831],[-93.339,36.481]],[[-89.674,36.843],[-89.486,36.856],[-89.454,36.912],[-89.427,36.912],[-89.441,36.93],[-89.418,36.924],[-89.391,36.937],[-89.387,36.955],[-89.351,36.955],[-89.351,36.98],[-89.333,36.993],[-89.292,36.986],[-89.292,37.024],[-89.31,37.049],[-89.351,37.055],[-89.346,37.111],[-89.378,37.129],[-89.373,37.148],[-89.418,37.197],[-89.445,37.197],[-89.445,37.247],[-89.427,37.259],[-89.445,37.272],[-89.472,37.259],[-89.499,37.272],[-89.562,37.272],[-89.593,37.253],[-89.643,37.259],[-89.647,37.241],[-89.71,37.216],[-89.728,37.179],[-89.778,37.16],[-89.795,37.111],[-89.822,37.098],[-89.822,37.061],[-89.737,36.968],[-89.728,36.868],[-89.674,36.843]],[[-94.121,37.017],[-94.036,37.036],[-94.04,37.166],[-94.022,37.179],[-94.022,37.315],[-94.053,37.321],[-94.053,37.371],[-94.292,37.365],[-94.296,37.383],[-94.413,37.371],[-94.431,37.383],[-94.48,37.377],[-94.512,37.395],[-94.628,37.383],[-94.628,37.334],[-94.646,37.321],[-94.646,37.061],[-94.628,37.036],[-94.444,37.03],[-94.417,37.042],[-94.399,37.03],[-94.31,37.03],[-94.292,37.042],[-94.202,37.042],[-94.121,37.017]],[[-93.501,37.067],[-93.043,37.067],[-93.038,37.284],[-93.056,37.296],[-93.056,37.432],[-93.416,37.432],[-93.447,37.451],[-93.645,37.451],[-93.636,37.092],[-93.618,37.08],[-93.515,37.086],[-93.501,37.067]],[[-94.471,38.822],[-94.363,38.822],[-94.332,38.852],[-94.332,38.888],[-94.229,38.894],[-94.242,38.985],[-94.184,38.991],[-94.184,39.039],[-94.238,39.052],[-94.242,39.07],[-94.305,39.07],[-94.323,39.058],[-94.323,39.033],[-94.413,39.046],[-94.431,39.07],[-94.458,39.07],[-94.453,39.112],[-94.431,39.106],[-94.399,39.136],[-94.377,39.13],[-94.372,39.148],[-94.35,39.142],[-94.332,39.166],[-94.31,39.16],[-94.31,39.196],[-94.292,39.221],[-94.256,39.221],[-94.238,39.184],[-94.184,39.196],[-94.188,39.467],[-94.386,39.467],[-94.417,39.485],[-94.48,39.485],[-94.485,39.467],[-94.575,39.467],[-94.575,39.539],[-94.592,39.551],[-94.804,39.545],[-94.808,39.563],[-95.114,39.551],[-95.118,39.509],[-95.06,39.467],[-95.06,39.431],[-95.01,39.437],[-94.992,39.401],[-94.925,39.359],[-94.943,39.347],[-94.943,39.299],[-94.911,39.281],[-94.911,39.257],[-94.862,39.263],[-94.862,39.202],[-94.844,39.178],[-94.795,39.184],[-94.79,39.154],[-94.687,39.16],[-94.682,39.142],[-94.628,39.13],[-94.633,39.1],[-94.615,39.088],[-94.615,39.039],[-94.633,39.027],[-94.628,38.828],[-94.512,38.84],[-94.471,38.822]]],"c":55630370830},{"n":"USGS_LPC_AR_North_Corridor_B1_2017_LAS_2018","y":2017,"b":[-93.979,35.606,-92.995,36.518],"p":[[[-93.723,35.619],[-93.642,35.606],[-93.637,35.625],[-93.597,35.606],[-93.48,35.619],[-93.422,35.688],[-93.422,35.751],[-93.449,35.764],[-93.453,35.783],[-93.426,35.783],[-93.422,35.802],[-93.399,35.795],[-93.381,35.833],[-93.359,35.827],[-93.354,35.846],[-93.287,35.814],[-93.224,35.814],[-93.193,35.833],[-93.179,35.814],[-93.13,35.821],[-93.13,35.795],[-93.098,35.776],[-93.103,35.745],[-93.085,35.72],[-92.995,35.732],[-92.995,36.499],[-93.035,36.518],[-93.062,36.505],[-93.88,36.518],[-93.88,36.418],[-93.92,36.411],[-93.925,36.368],[-93.866,36.324],[-93.884,36.311],[-93.88,36.255],[-93.911,36.236],[-93.907,36.217],[-93.938,36.186],[-93.934,36.167],[-93.965,36.123],[-93.979,35.751],[-93.952,35.739],[-93.853,35.764],[-93.799,35.751],[-93.736,35.764],[-93.705,35.745],[-93.705,35.656],[-93.723,35.644],[-93.723,35.619]]],"c":50529716036},{"n":"USGS_LPC_AR_North_Corridor_B2_2017_LAS_2018","y":2017,"b":[-93.021,35.435,-92.155,36.511],"p":[[[-92.482,35.435],[-92.415,35.441],[-92.411,35.473],[-92.388,35.467],[-92.37,35.505],[-92.334,35.505],[-92.33,35.524],[-92.24,35.524],[-92.195,35.498],[-92.168,35.511],[-92.173,36.085],[-92.155,36.098],[-92.155,36.511],[-93.017,36.511],[-93.021,35.739],[-92.99,35.72],[-92.963,35.732],[-92.9,35.72],[-92.846,35.745],[-92.842,35.713],[-92.815,35.701],[-92.819,35.656],[-92.801,35.644],[-92.833,35.6],[-92.842,35.524],[-92.721,35.505],[-92.671,35.524],[-92.653,35.498],[-92.599,35.473],[-92.586,35.492],[-92.55,35.492],[-92.532,35.479],[-92.532,35.454],[-92.496,35.454],[-92.482,35.435]]],"c":55288447419},{"n":"USGS_LPC_AR_North_Corridor_B3_2017_LAS_2018","y":2017,"b":[-92.188,35.447,-91.187,36.517],"p":[[[-92.157,35.453],[-92.081,35.447],[-92.076,35.466],[-92.022,35.491],[-91.784,35.485],[-91.784,35.51],[-91.766,35.523],[-91.739,35.51],[-91.622,35.51],[-91.622,35.574],[-91.609,35.593],[-91.564,35.593],[-91.569,35.7],[-91.551,35.713],[-91.582,35.757],[-91.578,35.952],[-91.488,35.952],[-91.47,35.927],[-91.42,35.921],[-91.416,35.902],[-91.286,35.908],[-91.232,35.896],[-91.187,35.908],[-91.187,35.946],[-91.218,35.965],[-91.214,36.034],[-91.245,36.078],[-91.227,36.091],[-91.227,36.242],[-91.245,36.254],[-91.254,36.392],[-91.308,36.404],[-91.313,36.436],[-91.335,36.43],[-91.353,36.48],[-91.389,36.48],[-91.389,36.505],[-91.407,36.517],[-91.488,36.505],[-91.515,36.517],[-92.175,36.511],[-92.17,36.292],[-92.188,36.279],[-92.188,35.51],[-92.157,35.491],[-92.157,35.453]]],"c":54728166057},{"n":"USGS_LPC_MO_FEMAR7_North_A2_2017_LAS_2019","y":2017,"b":[-92.09,37.762,-91.075,38.728],"p":[[[-91.726,37.762],[-91.708,37.774],[-91.654,37.762],[-91.627,37.774],[-91.573,37.762],[-91.546,37.774],[-91.519,37.762],[-91.376,37.762],[-91.358,37.774],[-91.268,37.762],[-91.268,37.799],[-91.236,37.818],[-91.236,37.965],[-91.254,37.977],[-91.29,37.965],[-91.29,37.989],[-91.263,38.002],[-91.236,37.989],[-91.088,37.996],[-91.093,38.051],[-91.075,38.063],[-91.079,38.216],[-91.106,38.228],[-91.25,38.228],[-91.317,38.21],[-91.349,38.228],[-91.344,38.697],[-91.376,38.728],[-91.492,38.728],[-91.546,38.703],[-91.551,38.685],[-91.564,38.703],[-91.6,38.703],[-91.605,38.721],[-91.659,38.709],[-91.659,38.295],[-91.685,38.308],[-91.748,38.295],[-91.78,38.314],[-92.072,38.308],[-92.09,38.295],[-92.09,37.781],[-92.072,37.768],[-91.982,37.781],[-91.964,37.768],[-91.753,37.774],[-91.726,37.762]]],"c":34222941512},{"n":"USGS_LPC_MO_FEMAR7_North_A3_2017_LAS_2019","y":2017,"b":[-92.471,36.869,-91.294,38.439],"p":[[[-91.555,36.869],[-91.487,36.875],[-91.487,36.937],[-91.42,36.943],[-91.42,37.018],[-91.375,37.043],[-91.375,37.427],[-91.406,37.433],[-91.388,37.458],[-91.393,37.526],[-91.375,37.55],[-91.42,37.587],[-91.42,37.624],[-91.402,37.637],[-91.402,37.674],[-91.379,37.667],[-91.334,37.692],[-91.298,37.68],[-91.294,37.772],[-91.312,37.784],[-92.076,37.784],[-92.08,38.244],[-92.062,38.256],[-92.062,38.293],[-92.08,38.305],[-92.156,38.299],[-92.174,38.311],[-92.174,38.336],[-92.201,38.348],[-92.399,38.348],[-92.385,38.427],[-92.439,38.439],[-92.471,38.421],[-92.471,37.476],[-92.439,37.458],[-92.264,37.452],[-92.269,37.049],[-92.251,37.037],[-91.905,37.043],[-91.873,37.024],[-91.784,37.024],[-91.779,37.043],[-91.743,37.043],[-91.739,37.024],[-91.703,37.037],[-91.685,37.024],[-91.689,36.981],[-91.658,36.962],[-91.689,36.956],[-91.685,36.875],[-91.581,36.881],[-91.555,36.869]]],"c":61864269323},{"n":"USGS_LPC_MO_FEMAR7_North_A4_2017_LAS_2019","y":2017,"b":[-93.639,37.394,-92.449,38.705],"p":[[[-93.352,37.4],[-93.046,37.4],[-93.042,37.468],[-92.449,37.468],[-92.449,37.53],[-92.467,37.542],[-92.449,37.555],[-92.467,37.567],[-92.449,37.579],[-92.449,38.437],[-92.637,38.45],[-92.736,38.547],[-92.813,38.59],[-92.831,38.614],[-92.831,38.699],[-92.988,38.693],[-93.069,38.705],[-93.087,38.693],[-93.082,38.382],[-93.1,38.37],[-93.1,38.187],[-93.082,38.175],[-93.087,38.095],[-93.073,38.077],[-93.338,38.071],[-93.343,38.089],[-93.513,38.089],[-93.531,38.077],[-93.527,37.936],[-93.545,37.924],[-93.594,37.93],[-93.594,37.856],[-93.639,37.832],[-93.639,37.733],[-93.621,37.721],[-93.639,37.425],[-93.608,37.406],[-93.356,37.419],[-93.352,37.4]]],"c":67251978397},{"n":"USGS_LPC_MO_FEMA_R7_South_B1_2017_LAS_2019","y":2017,"b":[-94.621,36.484,-93.566,36.939],"p":[[[-94.581,36.484],[-94.365,36.484],[-94.347,36.496],[-94.32,36.484],[-94.096,36.484],[-94.078,36.496],[-94.051,36.484],[-93.826,36.484],[-93.808,36.496],[-93.781,36.484],[-93.584,36.484],[-93.566,36.509],[-93.566,36.821],[-93.611,36.833],[-93.611,36.883],[-93.593,36.895],[-93.611,36.908],[-93.593,36.933],[-94.064,36.939],[-94.082,36.926],[-94.078,36.771],[-94.096,36.758],[-94.603,36.777],[-94.603,36.727],[-94.621,36.715],[-94.621,36.502],[-94.581,36.484]]],"c":17490213971},{"n":"USGS_LPC_MO_FEMA_R7_South_B2_2017_LAS_2019","y":2017,"b":[-93.087,36.481,-91.101,37.5],"p":[[[-92.763,36.481],[-92.691,36.493],[-92.665,36.481],[-92.575,36.481],[-92.557,36.493],[-92.53,36.481],[-92.503,36.493],[-92.332,36.493],[-92.314,36.481],[-92.26,36.493],[-92.179,36.481],[-92.152,36.493],[-92.099,36.481],[-92.072,36.493],[-92.018,36.481],[-91.82,36.481],[-91.802,36.493],[-91.721,36.481],[-91.694,36.493],[-91.614,36.481],[-91.587,36.493],[-91.533,36.481],[-91.452,36.493],[-91.398,36.481],[-91.344,36.493],[-91.29,36.481],[-91.263,36.493],[-91.236,36.481],[-91.209,36.493],[-91.182,36.481],[-91.133,36.487],[-91.115,36.5],[-91.119,36.743],[-91.101,36.756],[-91.101,36.83],[-91.209,36.843],[-91.214,36.899],[-91.506,36.893],[-91.533,36.905],[-91.614,36.893],[-91.645,36.911],[-91.645,37.06],[-92.678,37.073],[-92.683,37.116],[-92.638,37.141],[-92.238,37.197],[-92.233,37.253],[-92.251,37.265],[-92.251,37.475],[-92.651,37.481],[-92.669,37.494],[-93.015,37.488],[-93.069,37.5],[-93.087,37.488],[-93.087,37.265],[-93.069,37.253],[-93.073,37.085],[-92.939,37.085],[-92.907,37.067],[-92.925,36.805],[-92.907,36.793],[-92.772,36.793],[-92.772,36.556],[-92.79,36.543],[-92.79,36.493],[-92.763,36.481]]],"c":51902323406},{"n":"USGS_LPC_AR_Benton_Co_2015_LAS_2017","y":2015,"b":[-94.626,36.085,-93.799,36.512],"p":[[[-94.531,36.085],[-94.513,36.098],[-94.486,36.085],[-94.383,36.092],[-94.379,36.136],[-94.325,36.136],[-94.325,36.211],[-94.019,36.198],[-94.001,36.211],[-94.001,36.236],[-93.947,36.223],[-93.857,36.236],[-93.853,36.305],[-93.799,36.305],[-93.804,36.324],[-93.826,36.317],[-93.831,36.336],[-93.857,36.349],[-93.857,36.374],[-93.884,36.386],[-93.853,36.405],[-93.857,36.499],[-93.884,36.512],[-94.621,36.512],[-94.626,36.43],[-94.608,36.418],[-94.599,36.267],[-94.581,36.255],[-94.572,36.104],[-94.531,36.085]]],"c":9440092390},{"n":"USGS_LPC_MO_AR_Vernon_Barton_2014_LAS_2016","y":2014,"b":[-94.629,37.335,-94.045,38.067],"p":[[[-94.131,37.335],[-94.113,37.347],[-94.072,37.341],[-94.077,37.532],[-94.059,37.545],[-94.063,37.944],[-94.045,37.957],[-94.045,38.043],[-94.113,38.049],[-94.117,38.067],[-94.171,38.055],[-94.611,38.067],[-94.629,38.055],[-94.629,37.365],[-94.544,37.347],[-94.414,37.353],[-94.387,37.341],[-94.36,37.353],[-94.342,37.341],[-94.158,37.347],[-94.131,37.335]]],"c":6365508892},{"n":"MO_BarryCo_2011","y":2011,"b":[-94.008,36.56,-93.546,36.94],"p":[[[-93.991,36.566],[-93.914,36.56],[-93.856,36.603],[-93.806,36.61],[-93.802,36.628],[-93.726,36.622],[-93.721,36.641],[-93.591,36.635],[-93.564,36.647],[-93.546,36.822],[-93.604,36.853],[-93.604,36.94],[-93.721,36.94],[-93.748,36.928],[-93.752,36.909],[-93.766,36.928],[-93.856,36.928],[-93.874,36.903],[-93.91,36.89],[-93.923,36.847],[-93.955,36.828],[-93.937,36.803],[-93.937,36.728],[-93.955,36.716],[-93.955,36.691],[-93.982,36.691],[-93.977,36.66],[-94.008,36.616],[-93.991,36.566]]],"c":584124621},{"n":"MO_GreeneCo_2011","y":2011,"b":[-93.635,37.076,-93.051,37.441],"p":[[[-93.285,37.076],[-93.123,37.076],[-93.105,37.089],[-93.069,37.076],[-93.051,37.089],[-93.051,37.274],[-93.069,37.287],[-93.069,37.349],[-93.051,37.361],[-93.069,37.373],[-93.069,37.423],[-93.604,37.429],[-93.631,37.441],[-93.635,37.274],[-93.617,37.262],[-93.617,37.089],[-93.433,37.095],[-93.352,37.082],[-93.298,37.095],[-93.285,37.076]]],"c":5662589078},{"n":"MO_Rolla_2011","y":2011,"b":[-91.788,37.898,-91.73,37.984],"p":[[[-91.748,37.898],[-91.73,37.91],[-91.73,37.972],[-91.757,37.984],[-91.788,37.953],[-91.788,37.917],[-91.748,37.898]]],"c":20703110},{"n":"ARRA-MO_StoneCo_2010","y":2010,"b":[-93.629,36.617,-93.288,37.01],"p":[[[-93.576,36.617],[-93.302,36.624],[-93.288,36.817],[-93.333,36.829],[-93.333,36.966],[-93.315,36.979],[-93.333,37.004],[-93.598,37.01],[-93.629,36.991],[-93.629,36.817],[-93.585,36.805],[-93.585,36.667],[-93.602,36.655],[-93.602,36.63],[-93.576,36.617]]],"c":1926491853},{"n":"MO_JasperCo_2010","y":2010,"b":[-94.65,37.026,-94.026,37.386],"p":[[[-94.084,37.026],[-94.039,37.039],[-94.044,37.256],[-94.026,37.268],[-94.026,37.293],[-94.057,37.324],[-94.057,37.361],[-94.111,37.373],[-94.349,37.367],[-94.381,37.386],[-94.408,37.373],[-94.461,37.386],[-94.646,37.379],[-94.65,37.336],[-94.632,37.324],[-94.65,37.299],[-94.632,37.287],[-94.65,37.262],[-94.632,37.249],[-94.632,37.187],[-94.65,37.175],[-94.632,37.163],[-94.632,37.138],[-94.646,37.119],[-94.556,37.107],[-94.551,37.163],[-94.488,37.163],[-94.448,37.181],[-94.43,37.169],[-94.435,37.101],[-94.417,37.088],[-94.421,37.07],[-94.381,37.063],[-94.363,37.039],[-94.098,37.045],[-94.084,37.026]]],"c":1644359748}];
+const LIDAR = {
+  base: 'https://s3-us-west-2.amazonaws.com/usgs-lidar-public/',
+  index: 'https://raw.githubusercontent.com/hobuinc/usgs-lidar/master/boundaries/resources.geojson',
+  lazBase: 'https://cdn.jsdelivr.net/npm/laz-perf@0.0.7/lib/web/',
+  minZoom: 15, sets: SWMO_EPT, fullLoaded: false, meta: new Map(), nodes: new Map(), lz: null,
+  active: 0, queue: [], unit: new Map(), warned: false, budget: 2500000,
+};
+function datasetYear(name) { const m = name.match(/D(\d{2})$/); if (m) return 2000 + +m[1]; const y = name.match(/(?:19|20)\d{2}/); return y ? +y[0] : 0; }
+function inRing(x, y, ring) { let c = false; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const [xi, yi] = ring[i], [xj, yj] = ring[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; }
+function lidarSetsAt(lng, lat) {
+  return LIDAR.sets.filter(s => lng >= s.b[0] && lng <= s.b[2] && lat >= s.b[1] && lat <= s.b[3] && s.p.some(r => inRing(lng, lat, r))).sort((a, b) => b.y - a.y);
+}
+async function loadFullLidarIndex() {
+  if (LIDAR.fullLoaded) return; LIDAR.fullLoaded = true;
+  try {
+    const j = await (await fetch(LIDAR.index)).json();
+    const have = new Set(LIDAR.sets.map(s => s.n));
+    for (const f of j.features) {
+      const n = f.properties.name; if (have.has(n)) continue;
+      const polys = f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates;
+      const rings = polys.map(p => p[0]); let b = [180, 90, -180, -90];
+      rings.forEach(r => r.forEach(([x, y]) => { b = [Math.min(b[0], x), Math.min(b[1], y), Math.max(b[2], x), Math.max(b[3], y)]; }));
+      LIDAR.sets.push({ n, y: datasetYear(n), b, p: rings });
+    }
+  } catch (e) { LIDAR.fullLoaded = false; }
+}
+function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('could not load ' + src)); document.head.appendChild(s); }); }
+function lazReady() {
+  if (!LIDAR.lz) LIDAR.lz = (async () => {
+    if (!window.createLazPerf) await loadScript(LIDAR.lazBase + 'laz-perf.js');
+    return createLazPerf({ locateFile: f => LIDAR.lazBase + f });
+  })().catch(e => { LIDAR.lz = null; throw e; });
+  return LIDAR.lz;
+}
+async function eptMeta(name) {
+  if (!LIDAR.meta.has(name)) LIDAR.meta.set(name, (async () => {
+    const base = LIDAR.base + name + '/';
+    const ept = await (await fetch(base + 'ept.json')).json();
+    const hier = new Map(Object.entries(await (await fetch(base + 'ept-hierarchy/0-0-0-0.json')).json()));
+    const wkt = JSON.stringify(ept.srs || {});
+    let zf = /foot|feet|ftUS|US survey/i.test(wkt.split(/VERT_CS|VERTCRS|vertical/i)[1] || '') ? 0.3048006 : 1;
+    return { name, base, ept, hier, loaded: new Set(['0-0-0-0']), zf, calibrated: zf !== 1 };
+  })().catch(e => { LIDAR.meta.delete(name); throw e; }));
+  return LIDAR.meta.get(name);
+}
+function nodeBounds(m, key) {
+  const [d, x, y] = key.split('-').map(Number), b = m.ept.bounds, size = (b[3] - b[0]) / Math.pow(2, d);
+  return [b[0] + x * size, b[1] + y * size, b[0] + (x + 1) * size, b[1] + (y + 1) * size];
+}
+async function eptNodes(m, bb, maxDepth) {
+  const out = [], stack = ['0-0-0-0'];
+  while (stack.length) {
+    const key = stack.pop();
+    let cnt = m.hier.get(key);
+    if (cnt === undefined) continue;
+    if (cnt === -1 && !m.loaded.has(key)) {
+      m.loaded.add(key);
+      try { const j = await (await fetch(m.base + 'ept-hierarchy/' + key + '.json')).json(); for (const [k, v] of Object.entries(j)) m.hier.set(k, v); } catch (e) { continue; }
+      cnt = m.hier.get(key);
+    }
+    const nb = nodeBounds(m, key);
+    if (nb[2] < bb[0] || nb[0] > bb[2] || nb[3] < bb[1] || nb[1] > bb[3]) continue;
+    if (cnt > 0) out.push({ key, count: cnt });
+    const [d, x, y, z] = key.split('-').map(Number);
+    if (d >= maxDepth) continue;
+    for (let i = 0; i < 8; i++) stack.push(`${d + 1}-${2 * x + (i & 1)}-${2 * y + ((i >> 1) & 1)}-${2 * z + ((i >> 2) & 1)}`);
+  }
+  return out;
+}
+function withSlot(fn) {
+  return new Promise((res, rej) => {
+    const run = () => { LIDAR.active++; fn().then(res, rej).finally(() => { LIDAR.active--; const n = LIDAR.queue.shift(); if (n) n(); }); };
+    if (LIDAR.active < 4) run(); else LIDAR.queue.push(run);
+  });
+}
+async function eptPoints(m, key) {
+  const ck = m.name + '/' + key;
+  if (LIDAR.nodes.has(ck)) { const v = LIDAR.nodes.get(ck); LIDAR.nodes.delete(ck); LIDAR.nodes.set(ck, v); return v; }
+  const p = withSlot(async () => {
+    const ab = await (await fetch(m.base + 'ept-data/' + key + '.laz')).arrayBuffer();
+    const lp = await lazReady(), bytes = new Uint8Array(ab), hv = new DataView(ab);
+    const sx = hv.getFloat64(131, true), sy = hv.getFloat64(139, true), sz = hv.getFloat64(147, true);
+    const ox = hv.getFloat64(155, true), oy = hv.getFloat64(163, true), oz = hv.getFloat64(171, true);
+    const fptr = lp._malloc(bytes.length); lp.HEAPU8.set(bytes, fptr);
+    const lz = new lp.LASZip(); lz.open(fptr, bytes.length);
+    const n = lz.getCount(), len = lz.getPointLength(), fmt = lz.getPointFormat(), pptr = lp._malloc(len);
+    const x0 = nodeBounds(m, key)[0], y0 = nodeBounds(m, key)[1];
+    const X = new Float32Array(n), Y = new Float32Array(n), Z = new Float32Array(n); let k = 0;
+    try {
+      let H = lp.HEAPU8, dv = new DataView(H.buffer, pptr, len);
+      for (let i = 0; i < n; i++) {
+        lz.getPoint(pptr);
+        if (H.buffer !== lp.HEAPU8.buffer) { H = lp.HEAPU8; dv = new DataView(H.buffer, pptr, len); }
+        const cls = fmt >= 6 ? H[pptr + 16] : (H[pptr + 15] & 31);
+        if (cls === 7 || cls === 18) continue;                       // low / high noise
+        X[k] = dv.getInt32(0, true) * sx + ox - x0; Y[k] = dv.getInt32(4, true) * sy + oy - y0; Z[k] = (dv.getInt32(8, true) * sz + oz) * m.zf; k++;
+      }
+    } finally { lz.delete(); lp._free(fptr); lp._free(pptr); }
+    return { x0, y0, X: X.subarray(0, k), Y: Y.subarray(0, k), Z: Z.subarray(0, k) };
+  });
+  LIDAR.nodes.set(ck, p); p.catch(() => LIDAR.nodes.delete(ck));
+  while (LIDAR.nodes.size > 80) LIDAR.nodes.delete(LIDAR.nodes.keys().next().value);
+  return p;
+}
+/** Highest-return surface (m) on the DEM raster's grid, or null when no lidar covers it. */
+async function fetchLidarSurface(r, signal) {
+  const ts = WORLD / Math.pow(2, r.z), W = r.w, H = r.h, res = ts / (W - 2 * r.buf);
+  const bb = [-ORIGIN + r.x * ts - r.buf * res, ORIGIN - (r.y + 1) * ts - r.buf * res, -ORIGIN + (r.x + 1) * ts + r.buf * res, ORIGIN - r.y * ts + r.buf * res];
+  const cLat = y2lat((bb[1] + bb[3]) / 2), cLng = x2lon((bb[0] + bb[2]) / 2);
+  let sets = lidarSetsAt(cLng, cLat);
+  if (!sets.length && !LIDAR.fullLoaded && !(cLng > -94.3 && cLng < -91.6 && cLat > 36.3 && cLat < 38)) { await loadFullLidarIndex(); sets = lidarSetsAt(cLng, cLat); }
+  for (const s of sets.slice(0, 3)) {
+    if (signal && signal.aborted) throw new DOMException('aborted', 'AbortError');
+    let m; try { m = await eptMeta(s.n); } catch (e) { continue; }
+    const cube = m.ept.bounds[3] - m.ept.bounds[0], span = m.ept.span || 256;
+    const maxDepth = Math.max(0, Math.ceil(Math.log2(cube / (span * res * 0.75))));
+    const nodes = await eptNodes(m, bb, maxDepth);
+    const total = nodes.reduce((a, n) => a + n.count, 0);
+    if (!nodes.length) continue;
+    if (total > LIDAR.budget) return null;                           // too many points for this zoom
+    const top = new Float32Array(W * H).fill(-Infinity);
+    const lows = [];
+    for (const nd of nodes) {
+      if (signal && signal.aborted) throw new DOMException('aborted', 'AbortError');
+      const P = await eptPoints(m, nd.key);
+      const dx = P.x0 - bb[0], dy = bb[3] - P.y0;
+      for (let i = 0; i < P.X.length; i++) {
+        const ix = Math.floor((P.X[i] + dx) / res), iy = Math.floor((dy - P.Y[i]) / res);
+        if (ix < 0 || iy < 0 || ix >= W || iy >= H) continue;
+        const o = iy * W + ix, z = P.Z[i];
+        if (z > top[o]) top[o] = z;
+        if (!m.calibrated && (i & 63) === 0) lows.push([z, o]);
+      }
+    }
+    // Some flights store heights in feet: compare with the bare-earth DEM once per dataset.
+    if (!m.calibrated && lows.length > 50) {
+      const ratios = lows.map(([z, o]) => z / r.data[o]).filter(v => isFinite(v) && v > 0).sort((a, b) => a - b);
+      const med = ratios[Math.floor(ratios.length * 0.2)];
+      if (med > 2.9 && med < 3.7) { m.zf = 0.3048006; for (let i = 0; i < top.length; i++) top[i] *= 0.3048006; LIDAR.nodes.forEach((v, k) => { if (k.startsWith(m.name + '/')) LIDAR.nodes.delete(k); }); }
+      m.calibrated = true;
+    }
+    // fill small holes from neighbours, then fall back to bare earth; never below ground
+    let filled = 0;
+    for (let pass = 0; pass < 3; pass++) {
+      const src = top.slice();
+      for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+        const o = y * W + x; if (src[o] !== -Infinity) continue;
+        let mx = -Infinity; for (const q of [o - 1, o + 1, o - W, o + W, o - W - 1, o - W + 1, o + W - 1, o + W + 1]) if (src[q] > mx) mx = src[q];
+        if (mx !== -Infinity) { top[o] = mx; filled++; }
+      }
+    }
+    let have = 0;
+    for (let i = 0; i < top.length; i++) {
+      const g = r.data[i];
+      if (top[i] === -Infinity || !(top[i] === top[i])) top[i] = g;
+      else { have++; if (g === g && top[i] < g - 1.5) top[i] = g; }
+    }
+    if (have < top.length * 0.2) continue;                           // tile mostly outside this flight
+    return { surface: top, source: s.n, year: s.y };
+  }
+  return null;
 }
 
 /* =====================================================================
@@ -1148,6 +1318,17 @@ async function fetchChm(r, signal) {
 }
 async function ensureChm(r, signal) {
   if (!needsChm(r.z) || r.chm !== undefined) return r;
+  if (r.z >= LIDAR.minZoom && r.lidar === undefined) {
+    try {
+      const L2 = await fetchLidarSurface(r, signal);
+      r.lidar = L2 ? L2.surface : null; r.lidarSrc = L2 ? L2.source : null; r.lidarYear = L2 ? L2.year : null;
+      if (r.lidar) { r.chm = null; r.dsm = null; LIDAR.lastSrc = r.lidarSrc; updateTreeNote(); return r; }
+    } catch (e) {
+      if (e.name === 'AbortError') throw e;
+      r.lidar = null;
+      if (!LIDAR.warned) { LIDAR.warned = true; msg('Lidar point cloud not reachable (' + (e.message || 'network error') + ') — using the satellite tree estimate.', true, 9000); }
+    }
+  }
   try { r.chm = await fetchChm(r, signal); r.dsm = null; }
   catch (e) {
     if (e.name === 'AbortError') throw e;
@@ -1157,6 +1338,7 @@ async function ensureChm(r, signal) {
   return r;
 }
 function surfaceOf(r) {
+  if (r.lidar) return r.lidar;
   if (!r.chm) return r.data;
   if (!r.dsm) { const n = r.data.length, o = new Float32Array(n); for (let i = 0; i < n; i++) o[i] = r.data[i] + r.chm[i]; r.dsm = o; }
   return r.dsm;
@@ -1165,12 +1347,19 @@ function sampleChm(latlng) {
   if (!map.hasLayer(terrain)) return null;
   const z = Math.min(Math.round(map.getZoom()), terrain.options.maxNativeZoom);
   const p = map.project(latlng, z), tx = Math.floor(p.x / TILE), ty = Math.floor(p.y / TILE);
-  const r = terrain.cache.get(z + '/' + tx + '/' + ty); if (!r || !r.chm) return null;
-  const sc = r.w / NPX, x = Math.round((p.x - tx * TILE) * sc + r.buf - 0.5), y = Math.round((p.y - ty * TILE) * sc + r.buf - 0.5);
-  return r.chm[y * r.w + x] ?? null;
+  const r = terrain.cache.get(z + '/' + tx + '/' + ty); if (!r || !(r.chm || r.lidar)) return null;
+  const sc = r.w / NPX, x = Math.round((p.x - tx * TILE) * sc + r.buf - 0.5), y = Math.round((p.y - ty * TILE) * sc + r.buf - 0.5), o = y * r.w + x;
+  if (r.lidar) { const h = r.lidar[o] - r.data[o]; return h === h ? Math.max(0, h) : null; }
+  return r.chm[o] ?? null;
+}
+function chmAt(r, idx) { return r.lidar ? Math.max(0, r.lidar[idx] - r.data[idx]) : (r.chm ? r.chm[idx] : 0); }
+function updateTreeNote() {
+  const el = $('treeNote'); if (!el) return;
+  const s = LIDAR.lastSrc ? LIDAR.sets.find(x => x.n === LIDAR.lastSrc) : null;
+  el.innerHTML = 'Zoom 15+: built from the USGS lidar point cloud' + (s ? ` (<b>${esc(s.n)}</b>, flown ${s.y})` : '') + ' — real tree crowns. Zoom 12–14 or areas without lidar use Meta/WRI\'s satellite tree-height estimate.';
 }
 function syncTreeAttribution() {
-  const t = 'Tree heights © Meta/WRI CHMv2 (CC BY 4.0)';
+  const t = 'Lidar: USGS 3DEP · Tree heights © Meta/WRI CHMv2 (CC BY 4.0)';
   map.attributionControl.removeAttribution(t);
   if ((S.trees || S.color === 'canopy') && map.hasLayer(terrain)) map.attributionControl.addAttribution(t);
 }
@@ -1364,11 +1553,11 @@ $('colorMode').addEventListener('change', e => {
   if (S.color === 'elev' && S.auto) applyAutoRange();
   if (S.color === 'canopy') { terrain.redraw(); updateLegend(); } else redrawSoon();
 });
-$('treesOn').checked = S.trees; $('treeNote').style.display = S.trees ? '' : 'none';
+$('treesOn').checked = S.trees; $('treeNote').style.display = S.trees ? '' : 'none'; updateTreeNote();
 $('treesOn').addEventListener('change', e => {
   S.trees = e.target.checked; store.set('tv_trees', S.trees ? '1' : '0');
   $('treeNote').style.display = S.trees ? '' : 'none'; syncTreeAttribution();
-  if (S.trees && map.getZoom() < CHM.minZoom) msg('Zoom in to level 12+ to see trees shaded', false, 5000);
+  if (S.trees && map.getZoom() < LIDAR.minZoom) msg('Zoom in to level 15+ for lidar tree crowns (12–14 shows a satellite estimate)', false, 6000);
   terrain.redraw();
 });
 $('shadeSeg').addEventListener('click', e => {
@@ -1465,7 +1654,7 @@ map.on('click', async e => {
     `<div class="pop-elev">${v == null ? 'No data' : (S.units === 'ft' ? ft.toFixed(1) + ' ft' : v.toFixed(2) + ' m')}</div>` +
     `<div class="pop-sub">${v == null ? '' : (S.units === 'ft' ? v.toFixed(2) + ' m' : ft.toFixed(1) + ' ft') + ' · NAVD88 · ' + src}</div>` +
     `<div class="pop-sub">${ll.lat.toFixed(6)}, ${ll.lng.toFixed(6)}</div>` +
-    (() => { const t = sampleChm(ll); return t != null && t >= 1 ? `<div class="pop-sub">🌳 Trees here ≈ <b style="color:var(--ink)">${S.units === 'ft' ? Math.round(t * M2FT) + ' ft' : t.toFixed(0) + ' m'}</b> tall (canopy model)</div>` : ''; })());
+    (() => { const t = sampleChm(ll); return t != null && t >= 1 ? `<div class="pop-sub">🌳 Trees here ≈ <b style="color:var(--ink)">${S.units === 'ft' ? Math.round(t * M2FT) + ' ft' : t.toFixed(0) + ' m'}</b> tall (${map.getZoom() >= LIDAR.minZoom && LIDAR.lastSrc ? 'lidar' : 'satellite estimate'})</div>` : ''; })());
   const lh = await landP; if (lh && map.hasLayer(pop)) pop.setContent(pop.getContent() + lh);
 });
 
@@ -2411,7 +2600,11 @@ async function composeMap(P, prog) {
   if (ovActive.ovFema) { steps.push(['Flood zones', p => drawArcExport(ctx, b, W, H, rx, ry, FEMA_URL, null, ovActive.ovFema.options.opacity, 'Flood zones', notes, p)]); credits.push('Flood zones: FEMA NFHL'); }
   if (land.public) { steps.push(['Public land', p => drawArcExport(ctx, b, W, H, rx, ry, MDC_URL + '/export', null, land.public.options.opacity, 'Public land', notes, p)]); credits.push('Public land: Missouri Dept. of Conservation'); }
   if (land.plss) { steps.push(['Section lines', p => drawArcExport(ctx, b, W, H, rx, ry, PLSS_URL + '/export', null, land.plss.options.opacity, 'Section lines', notes, p)]); credits.push('PLSS: MO DNR'); }
-  if (land.parcels) { steps.push(['Property lines', p => drawArcExport(ctx, b, W, H, rx, ry, land.parcelSvc + '/export', land.parcelLayers ? { layers: land.parcelLayers } : null, land.parcels.options.opacity, 'Property lines', notes, p)]); credits.push('Parcels: Greene County Assessor'); }
+  if (land.parcels) {
+    const eb = [x2lon(b.X0), y2lat(b.Y0), x2lon(b.X1), y2lat(b.Y1)], used = land.svcs.filter(sv => bboxHit(sv.b, eb));
+    used.forEach(sv => steps.push([sv.name + ' parcels', p => drawArcExport(ctx, b, W, H, rx, ry, sv.url + '/export', sv.layers ? { layers: sv.layers } : null, landOpacity(), sv.name + ' parcels', notes, p)]));
+    if (used.length) credits.push('Parcels: ' + used.map(sv => sv.name).join(', ') + ' Co. assessors');
+  }
   if (map.hasLayer(labelLayers)) { LABEL_URLS.forEach(u => steps.push(['Labels', p => drawTiles(ctx, b, rx, ry, u, 19, 1, 'Labels', notes, p)])); credits.push('Labels: Esri'); }
   for (let i = 0; i < steps.length; i++) {
     const [name, fn] = steps[i];
@@ -2538,7 +2731,7 @@ $('expGo').addEventListener('click', async () => {
     const title = ($('expTitle').value || 'Terrain map').trim();
     const c = map.getCenter ? { lat: (r.latT + r.latB) / 2, lng: (r.lonL + r.lonR) / 2 } : null;
     const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-    const credits = ['Elevation: USGS 3DEP (NAVD88)'].filter(() => map.hasLayer(terrain) || Object.keys(serverLayers).length).concat((S.trees || S.color === 'canopy') && map.hasLayer(terrain) ? ['Tree heights: Meta/WRI CHMv2 (CC BY 4.0)'] : []).concat(r.credits);
+    const credits = ['Elevation: USGS 3DEP (NAVD88)'].filter(() => map.hasLayer(terrain) || Object.keys(serverLayers).length).concat((S.trees || S.color === 'canopy') && map.hasLayer(terrain) ? [LIDAR.lastSrc ? 'Lidar: USGS 3DEP ' + LIDAR.lastSrc : 'Tree heights: Meta/WRI CHMv2 (CC BY 4.0)'] : []).concat(r.credits);
     const pdf = buildPdf({
       lay: P.lay, jpeg, imgW: r.canvas.width, imgH: r.canvas.height,
       title, subtitle: `${dateStr}  ·  Center ${c.lat.toFixed(5)}, ${c.lng.toFixed(5)} (WGS 84)`,
@@ -3149,35 +3342,87 @@ const MDC_URL = 'https://gisblue.mdc.mo.gov/arcgis/rest/services/Discover_Nature
 const PLSS_URL = 'https://gis.dnr.mo.gov/host/rest/services/boundary/plss_layer/MapServer';
 const PARCEL_ROOT = 'https://greenecountyassessor.org/arcgis/rest/services';
 const PARCEL_FALLBACK = PARCEL_ROOT + '/ParcelPublicAccessJan82026/MapServer';
-const land = { public: null, parcels: null, plss: null, parcelSvc: null, parcelLayers: null };
+const integ = n => ['', '2', '3', '4', '5', '6', '7', '8'].map(k => `https://services${k}.integritygis.com/arcgis/rest/services/MO/${n}_Assessor_Data/MapServer`);
+const COUNTIES = [
+  { name: 'Greene', b: [-93.63, 37.06, -93.06, 37.46], greene: true },
+  { name: 'Christian', b: [-93.62, 36.80, -92.90, 37.10], c: ['https://gis.christiancountymo.gov/arcgis/rest/services/Integrity/Christian_Assessor_Data/MapServer', ...integ('Christian')] },
+  { name: 'Webster', b: [-93.08, 37.05, -92.68, 37.50], c: [...new Set(['https://services5.integritygis.com/arcgis/rest/services/MO/Webster_Assessor_Data/MapServer', ...integ('Webster')])] },
+  { name: 'Wright', b: [-92.71, 37.05, -92.24, 37.48], c: integ('Wright') },
+  { name: 'Douglas', b: [-92.93, 36.73, -92.08, 37.09], c: [...new Set(['https://services2.integritygis.com/arcgis/rest/services/MO/Douglas_Assessor_Data/MapServer', ...integ('Douglas')])] },
+];
+const land = { public: null, parcels: null, plss: null, svcs: [], resolving: new Map(), status: {} };
 function landOpacity() { return +$('landOp').value; }
 function parseSvcDate(name) {
   const m = name.match(/([A-Za-z]+)(\d{1,2})(\d{4})$/); if (!m) return 0;
   const t = Date.parse(`${m[1].slice(0, 3)} ${m[2]} ${m[3]}`); return isFinite(t) ? t : 0;
 }
-async function resolveParcels() {
-  const custom = (store.get('tv_parcelUrl') || '').trim().replace(/\/+$/, '');
-  let svc = custom || null;
-  const status = t => { $('parcelStatus').textContent = t; };
-  if (!svc) {
-    try {
-      const j = await (await fetch(PARCEL_ROOT + '?f=json')).json();
-      const names = (j.services || []).filter(s => /^ParcelPublicAccess/i.test(s.name) && /MapServer/i.test(s.type)).map(s => s.name);
-      names.sort((a, b) => parseSvcDate(b) - parseSvcDate(a));
-      if (names.length) svc = `${PARCEL_ROOT}/${names[0]}/MapServer`;
-    } catch (e) { /* fall back */ }
-  }
-  svc = svc || PARCEL_FALLBACK;
-  let layers = null;
-  try {
-    const j = await (await fetch(svc + '?f=json')).json();
-    const ids = (j.layers || []).filter(l => /parcel/i.test(l.name) && !/label|anno|text|dim/i.test(l.name) && (!l.subLayerIds || !l.subLayerIds.length)).map(l => l.id);
-    if (ids.length) layers = 'show:' + ids.join(',');
-    status(`Using ${svc.split('/services/')[1] || svc}${ids.length ? '' : ' (all layers)'}`);
-  } catch (e) { status(`Using ${svc.split('/services/')[1] || svc} — could not read its layer list (${e.message}).`); }
-  land.parcelSvc = svc; land.parcelLayers = layers;
-  return { svc, layers };
+function bboxHit(b, bb) { return !(b[2] < bb[0] || b[0] > bb[2] || b[3] < bb[1] || b[1] > bb[3]); }
+async function probeService(url, b) {
+  const cx = lon2x((b[0] + b[2]) / 2), cy = lat2y((b[1] + b[3]) / 2), d = 2000;
+  const img = await loadImg(arcExportUrl(url + '/export', [cx - d, cy - d, cx + d, cy + d], 32, 32), 9000);
+  return !!img;
 }
+async function parcelLayerIds(url) {
+  try {
+    const ctl = new AbortController(); setTimeout(() => ctl.abort(), 8000);
+    const j = await (await fetch(url + '?f=json', { signal: ctl.signal })).json();
+    const ids = (j.layers || []).filter(l => (!l.subLayerIds || !l.subLayerIds.length) &&
+      (/^(parcels?|parcel public|parcel lines?|tax ?parcels?|owner name)$/i.test(l.name.trim()) || (/parcel/i.test(l.name) && !/secure|label|anno|text|dim|number|acre/i.test(l.name)))).map(l => l.id);
+    return ids.length ? ids : null;
+  } catch (e) { return null; }
+}
+async function resolveCounty(c) {
+  if (land.resolving.has(c.name)) return land.resolving.get(c.name);
+  const p = (async () => {
+    let url = null;
+    if (c.custom) url = c.custom;
+    else if (c.greene) {
+      try {
+        const j = await (await fetch(PARCEL_ROOT + '?f=json')).json();
+        const names = (j.services || []).filter(s => /^ParcelPublicAccess/i.test(s.name) && /MapServer/i.test(s.type)).map(s => s.name).sort((a, b) => parseSvcDate(b) - parseSvcDate(a));
+        if (names.length) url = `${PARCEL_ROOT}/${names[0]}/MapServer`;
+      } catch (e) { /* fall back */ }
+      url = url || PARCEL_FALLBACK;
+    } else {
+      const cached = store.get('tv_parcelSvc_' + c.name);
+      const order = cached ? [cached, ...c.c.filter(u => u !== cached)] : c.c;
+      for (const u of order) { if (await probeService(u, c.b)) { url = u; break; } }
+      if (url) store.set('tv_parcelSvc_' + c.name, url);
+    }
+    if (!url) { land.status[c.name] = 'not found'; renderParcelStatus(); return null; }
+    const ids = await parcelLayerIds(url);
+    const svc = { name: c.name, url, b: c.b, ids, layers: ids ? 'show:' + ids.join(',') : null };
+    land.status[c.name] = '✓'; renderParcelStatus();
+    return svc;
+  })();
+  land.resolving.set(c.name, p);
+  p.then(v => { if (!v) land.resolving.delete(c.name); });
+  return p;
+}
+function renderParcelStatus() {
+  const el = $('parcelStatus'); if (!el) return;
+  el.textContent = Object.keys(land.status).length ? 'Counties: ' + Object.entries(land.status).map(([k, v]) => `${k} ${v}`).join(' · ') : '';
+}
+function countyList() {
+  const custom = (store.get('tv_parcelUrl') || '').trim().replace(/\/+$/, '');
+  return custom ? COUNTIES.concat([{ name: 'Custom', b: [-180, -85, 180, 85], custom }]) : COUNTIES;
+}
+async function refreshParcels() {
+  if (!land.parcels) return;
+  const v = map.getBounds(), bb = [v.getWest(), v.getSouth(), v.getEast(), v.getNorth()];
+  for (const c of countyList()) {
+    if (!bboxHit(c.b, bb) || land.svcs.some(s => s.name === c.name)) continue;
+    if (!land.status[c.name]) { land.status[c.name] = '…'; renderParcelStatus(); }
+    resolveCounty(c).then(svc => {
+      if (!svc || !land.parcels || land.svcs.some(s => s.name === svc.name)) return;
+      land.svcs.push(svc);
+      const l = new ArcTileLayer(svc.url + '/export', svc.layers ? { layers: svc.layers } : null, { pane: 'over', opacity: landOpacity(), minZoom: 13, maxZoom: 21, maxNativeZoom: 19, attribution: svc.name + ' Co. Assessor' });
+      let errs = 0; l.on('tileerror', () => { if (++errs === 8) msg(svc.name + ' County parcel map is not responding — their server may be down.', true, 9000); });
+      land.parcels.addLayer(l);
+    });
+  }
+}
+map.on('moveend', () => { if (land.parcels) refreshParcels(); });
 async function toggleLand(key, on) {
   if (land[key]) { map.removeLayer(land[key]); land[key] = null; }
   if (!on) return;
@@ -3185,18 +3430,15 @@ async function toggleLand(key, on) {
   if (key === 'public') { land.public = new ArcTileLayer(MDC_URL + '/export', null, { pane: 'over', opacity: op, minZoom: 6, maxZoom: 21, maxNativeZoom: 18, attribution: 'MDC' }).addTo(map); if (map.getZoom() < 12) msg('Zoom in to level 12+ to see conservation area boundaries'); }
   if (key === 'plss') { land.plss = new ArcTileLayer(PLSS_URL + '/export', null, { pane: 'over', opacity: op, minZoom: 10, maxZoom: 21, maxNativeZoom: 18, attribution: 'MO DNR' }).addTo(map); }
   if (key === 'parcels') {
-    msg('Finding the latest parcel map…', false, 4000);
-    const { svc, layers } = await resolveParcels();
-    if (!$('ovParcels').checked) return;
-    land.parcels = new ArcTileLayer(svc + '/export', layers ? { layers } : null, { pane: 'over', opacity: op, minZoom: 13, maxZoom: 21, maxNativeZoom: 19, attribution: 'Greene County Assessor' }).addTo(map);
-    let errs = 0; land.parcels.on('tileerror', () => { if (++errs === 6) msg('Parcel map is not responding — the county server may be down. Try again later.', true, 9000); });
+    land.svcs = []; land.parcels = L.layerGroup().addTo(map);
+    refreshParcels();
     if (map.getZoom() < 13) msg('Zoom in to level 13+ to see property lines');
   }
 }
 [['ovPublic', 'public'], ['ovParcels', 'parcels'], ['ovPlss', 'plss']].forEach(([id, key]) => $(id).addEventListener('change', e => toggleLand(key, e.target.checked)));
-$('landOp').addEventListener('input', e => { $('landOpV').textContent = Math.round(e.target.value * 100) + '%'; ['public', 'parcels', 'plss'].forEach(k => land[k] && land[k].setOpacity(+e.target.value)); });
+$('landOp').addEventListener('input', e => { $('landOpV').textContent = Math.round(e.target.value * 100) + '%'; ['public', 'plss'].forEach(k => land[k] && land[k].setOpacity(+e.target.value)); if (land.parcels) land.parcels.eachLayer(l => l.setOpacity(+e.target.value)); });
 $('parcelUrl').value = store.get('tv_parcelUrl') || '';
-$('parcelUrl').addEventListener('change', e => { store.set('tv_parcelUrl', e.target.value.trim()); if ($('ovParcels').checked) toggleLand('parcels', true); });
+$('parcelUrl').addEventListener('change', e => { store.set('tv_parcelUrl', e.target.value.trim()); land.resolving.delete('Custom'); delete land.status.Custom; if ($('ovParcels').checked) toggleLand('parcels', true); });
 
 async function identify(base, ll, layers) {
   const b = map.getBounds(), sz = map.getSize();
@@ -3213,13 +3455,13 @@ async function landInfoHtml(ll) {
     const acres = at.Acreage || at.Acres_GIS;
     return `<div><b>🌲 ${esc(name)}</b><br><span class="pop-sub">${esc(r.layerName)}${acres ? ' · ' + Math.round(+acres).toLocaleString() + ' acres' : ''}</span>${link && /^https?:/.test(link) ? `<br><a href="${esc(link)}" target="_blank" rel="noopener">Area page &amp; regulations ↗</a>` : ''}</div>`;
   }).catch(() => ''));
-  if (land.parcels) jobs.push(identify(land.parcelSvc, ll, land.parcelLayers ? land.parcelLayers.replace('show:', 'all:') : 'visible').then(rs => {
-    const r = rs.find(x => /parcel/i.test(x.layerName)) || rs[0]; if (!r) return '';
+  if (land.parcels) land.svcs.filter(sv => ll.lng >= sv.b[0] && ll.lng <= sv.b[2] && ll.lat >= sv.b[1] && ll.lat <= sv.b[3]).forEach(sv => jobs.push(identify(sv.url, ll, sv.ids ? 'all:' + sv.ids.join(',') : 'all').then(rs => {
+    const r = rs.find(x => /parcel/i.test(x.layerName) && Object.keys(x.attributes || {}).some(k => /own/i.test(k))) || rs.find(x => /parcel|owner/i.test(x.layerName)); if (!r) return '';
     const at = r.attributes || {}, keys = Object.keys(at).filter(k => at[k] && at[k] !== 'Null' && !/shape|objectid|globalid|^fid$/i.test(k));
     const pick = re => keys.filter(k => re.test(k));
     const show = [...new Set([...pick(/own/i), ...pick(/acre|area/i), ...pick(/parcel|pin|apn|account/i), ...pick(/addr|situs/i)])].slice(0, 6);
-    return `<div><b>🏠 Property</b>${show.map(k => `<br><span class="pop-sub">${esc(k.replace(/_/g, ' '))}:</span> ${esc(String(at[k]).slice(0, 60))}`).join('') || '<br>' + esc(r.value || '')}</div>`;
-  }).catch(() => '<div class="pop-sub">Property info unavailable (county server not responding)</div>'));
+    return `<div><b>🏠 Property</b> <span class="pop-sub">${esc(sv.name)} Co.</span>${show.map(k => `<br><span class="pop-sub">${esc(k.replace(/_/g, ' '))}:</span> ${esc(String(at[k]).slice(0, 60))}`).join('') || '<br>' + esc(r.value || '')}</div>`;
+  }).catch(() => `<div class="pop-sub">${esc(sv.name)} County property info unavailable (server not responding)</div>`)));
   const parts = (await Promise.all(jobs)).filter(Boolean);
   return parts.length ? `<div class="pop-land">${parts.join('<div style="height:6px"></div>')}</div>` : '';
 }
@@ -3370,7 +3612,7 @@ initSnap(); refreshCones();
 try { const w = JSON.parse(store.get('tv_wx') || 'null'); if (w && Date.now() - w.fetched < 6 * 3600000) { HUNT.wx = w; HUNT.day = todayIdx(w); afterWx(); } } catch (e) {}
 setTimeout(maybeRefreshWx, 1200);
 setSyncStatus(syncSummary()); scheduleSync(2000);
-window.__tv = { CHM, terrain, map, ann, exportPlan, composeMap, buildPdf, openExport, S, loc, HUNT, CATS, syncNow, findLayer, huntLayers, windAt, land, SYNC, dirty: () => dirty, tomb: () => tomb, applyRemote, idb };
+window.__tv = { CHM, LIDAR, terrain, map, ann, exportPlan, composeMap, buildPdf, openExport, S, loc, HUNT, CATS, syncNow, findLayer, huntLayers, windAt, land, SYNC, dirty: () => dirty, tomb: () => tomb, applyRemote, idb };
 })();
 </script>
 </body>
