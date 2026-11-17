@@ -182,8 +182,22 @@
   .leaflet-container{font-family:var(--font)}
   body.drawing #map{cursor:crosshair}
 
+
+  #toast{position:absolute;z-index:1010;left:50%;transform:translateX(-50%);top:calc(10px + var(--sat));max-width:min(420px, calc(100vw - 90px));padding:9px 14px;border-radius:12px;background:rgba(28,28,30,0.88);color:#fff;font-size:13px;line-height:1.35;text-align:center;box-shadow:var(--shadow);pointer-events:none;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+  #toast.err{background:rgba(150,40,30,0.94)}
+  /* ---------- Touch polish ---------- */
+  button, .tool, .tb, .swatch, .seg button, summary, .check{touch-action:manipulation}
+  #map, #toolbar, #drawBar, #status, .sheet-head, .prof-head{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+  .tool.track{color:var(--accent)}
+  .tool.track svg circle{fill:var(--accent-soft)}
+  #saProbe{position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;padding:var(--sat) var(--sar) var(--sab) var(--sal)}
+  @media (pointer: coarse){
+    .marker-icon{width:22px !important;height:22px !important;margin-left:-11px !important;margin-top:-11px !important}
+    .marker-icon.marker-icon-middle{width:16px !important;height:16px !important;margin-left:-8px !important;margin-top:-8px !important;opacity:.9}
+  }
+
   /* ---------- Mobile ---------- */
-  @media (max-width: 760px){
+  @media (max-width: 760px), (max-height: 500px) and (pointer: coarse){
     .sheet{left:0 !important;right:0 !important;top:auto !important;bottom:0 !important;width:auto !important;max-height:62vh;border-radius:18px 18px 0 0;padding-bottom:var(--sab);transition:transform .25s ease}
     #panel{max-height:70vh}
     #panel.collapsed{transform:translateY(110%)}
@@ -201,13 +215,54 @@
     .leaflet-control-scale{margin-left:8px !important;margin-bottom:calc(44px + var(--sab)) !important}
     .leaflet-control-attribution{margin-bottom:calc(42px + var(--sab)) !important}
     #crosshair{display:block}
+    #status #msg{display:none}
+    .sheet, #profile{z-index:1005}
+    #panel{max-height:calc(70vh - var(--kb, 0px)) !important}
+    #annSheet, #exportSheet{max-height:calc(58vh - var(--kb, 0px)) !important}
+    html.kb-open #panel, html.kb-open #annSheet, html.kb-open #exportSheet{max-height:calc(100% - var(--kb, 0px) - 12px - var(--sat)) !important}
+    .x-btn{width:36px;height:36px;font-size:16px;position:relative}
+    .x-btn::after{content:"";position:absolute;inset:-6px}
+    .leaflet-control-attribution{font-size:9px;line-height:1.25;max-width:calc(100vw - 150px);white-space:normal;text-align:right;padding:1px 4px !important}
+    body.draw-open .leaflet-bottom{transform:translateY(calc(-1 * var(--dbh, 64px)))}
+    .leaflet-bottom{transition:transform .2s}
+    #expMore > summary{padding:4px 0}
+    input[type=text],input[type=search],input[type=number],textarea,select{font-size:16px}
+    .sheet{bottom:var(--kb, 0px) !important;max-height:calc(62vh - var(--kb, 0px))}
+    #panel{max-height:calc(70vh - var(--kb, 0px))}
+    html.kb-open .sheet{max-height:calc(100% - var(--kb, 0px) - 12px - var(--sat))}
     body.sheet-open #status, body.sheet-open #drawBar{display:none}
+    #exportSheet .note, #exportSheet .sheet-head .subtitle{display:none}
+    #exportSheet .stack{margin:6px 0}
+  }
+
+  /* ---------- Phone in landscape: sheets become a left side panel ---------- */
+  @media (max-height: 500px) and (pointer: coarse){
+    .sheet{left:calc(8px + var(--sal)) !important;right:auto !important;top:8px !important;bottom:calc(8px + var(--kb, 0px)) !important;width:330px !important;max-height:none !important;border-radius:14px;padding-bottom:0}
+    #panel, #annSheet, #exportSheet, html.kb-open #panel, html.kb-open #annSheet, html.kb-open #exportSheet{max-height:none !important}
+    #panel.collapsed{transform:translateX(calc(-100% - 24px - var(--sal)))}
+    #toast{left:calc(346px + var(--sal)) !important;transform:none !important}
+    .grab{display:none}
+    #profile{left:calc(8px + var(--sal));right:calc(62px + var(--sar));bottom:8px;border-radius:14px;padding-bottom:8px}
+    #chart{height:110px}
+    #drawBar{left:calc(8px + var(--sal));right:calc(62px + var(--sar))}
+    #status{left:calc(8px + var(--sal));right:calc(62px + var(--sar))}
+    #legend{left:calc(8px + var(--sal))}
+    body.sheet-open #status, body.sheet-open #drawBar{display:flex}
+    body.sheet-open #drawBar[hidden]{display:none !important}
+    body.side-open #status, body.side-open #drawBar{left:calc(346px + var(--sal))}
+    body.side-open .leaflet-bottom.leaflet-left{display:none}
+    body.prof-open #status{display:none !important}
+    body.prof-open .leaflet-bottom{display:none}
+    body.draw-open .leaflet-bottom{transform:translateY(calc(-1 * var(--dbh, 64px)))}
+    .leaflet-bottom.leaflet-right{right:calc(54px + var(--sar))}
   }
 </style>
 </head>
 <body>
 <div id="map"></div>
 <div id="crosshair"></div>
+<div id="saProbe"></div>
+<div id="toast" hidden></div>
 <div id="frame"><span class="flabel" id="frameLabel"></span><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i></div>
 
 <!-- ================= Layers panel ================= -->
@@ -390,7 +445,11 @@
     <button class="x-btn" id="expClose" title="Cancel" aria-label="Cancel">✕</button>
   </div>
   <div class="sheet-body">
-    <div class="stack"><div class="lbl">Title</div><input type="text" id="expTitle" placeholder="Map title" value="Terrain map"></div>
+    <details id="expMore" style="border-bottom:none;padding:2px 0">
+      <summary>Title &amp; layout</summary>
+      <div class="stack"><div class="lbl">Title</div><input type="text" id="expTitle" placeholder="Map title" value="Terrain map" enterkeyhint="done"></div>
+      <label class="check"><input type="checkbox" id="expMargins" checked> Title, scale bar, north arrow &amp; legend</label>
+    </details>
     <div class="stack"><div class="lbl">Page</div>
       <select id="expPage">
         <option value="letter">Letter 8.5 × 11 in</option>
@@ -401,7 +460,6 @@
     </div>
     <div class="stack"><div class="seg" id="expOrient"><button data-v="land" class="on">Landscape</button><button data-v="port">Portrait</button></div></div>
     <div class="stack"><div class="lbl">Quality</div><div class="seg" id="expDpi"><button data-v="150">150 dpi</button><button data-v="200" class="on">200 dpi</button><button data-v="300">300 dpi</button></div></div>
-    <label class="check"><input type="checkbox" id="expMargins" checked> Title, scale bar, north arrow &amp; legend</label>
     <div class="exp-info" id="expInfo"></div>
     <div id="expProgress" hidden><span id="expProgText">Working…</span><div class="bar"><i id="expBar"></i></div></div>
     <div class="btn-row">
@@ -445,6 +503,7 @@
     <button class="tb" data-tool="Rectangle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="6" width="16" height="12" rx="1" fill="currentColor" fill-opacity=".15"/></svg>Box</button>
     <button class="tb" data-tool="Circle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8" fill="currentColor" fill-opacity=".15"/></svg>Circle</button>
     <button class="tb" data-tool="Text"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 6h14M12 6v13"/></svg>Text</button>
+    <button class="tb" id="drawGps" title="Drop a point at your GPS location"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3.2" fill="currentColor"/><circle cx="12" cy="12" r="7.5"/><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3"/></svg>GPS pt</button>
     <span class="sep"></span>
     <button class="tb" id="drawClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg>Done</button>
   </div>
@@ -500,7 +559,9 @@ const NODATA_BELOW = -1000;
 const M2FT = 3.28084;
 const DEG = Math.PI / 180;
 const isTouch = matchMedia('(pointer: coarse)').matches;
-const isMobile = () => matchMedia('(max-width: 760px)').matches;
+const PHONE_Q = '(max-width: 760px), (max-height: 500px) and (pointer: coarse)';
+const isMobile = () => matchMedia(PHONE_Q).matches;
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
 const S = {
   units: 'ft', color: 'none', shade: 'hs', az: 315, alt: 45, ex: 2, strength: 0.7,
@@ -530,8 +591,12 @@ const fmtArea = m2 => {
 };
 let msgTimer;
 function msg(t, err = false, ms = 4000) {
-  const el = $('msg'); el.textContent = t || ''; el.className = err ? 'err' : '';
-  clearTimeout(msgTimer); if (t && ms) msgTimer = setTimeout(() => { el.textContent = ''; }, ms);
+  const el = $('msg'), ts = $('toast');
+  el.textContent = t || ''; el.className = err ? 'err' : '';
+  const phone = matchMedia('(max-width: 760px), (max-height: 500px) and (pointer: coarse)').matches;
+  ts.textContent = t || ''; ts.className = err ? 'err' : ''; ts.hidden = !(phone && t);
+  clearTimeout(msgTimer);
+  if (t && ms) msgTimer = setTimeout(() => { el.textContent = ''; ts.textContent = ''; ts.hidden = true; }, ms);
 }
 function hexToRgb(h) { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
 function rgba(h, a) { const [r, g, b] = hexToRgb(h); return `rgba(${r},${g},${b},${a})`; }
@@ -599,8 +664,8 @@ let start = { lat: 37.215, lng: -93.30, z: 11 };   // Springfield / Greene Count
 const hm = location.hash.match(/^#(\d+(?:\.\d+)?)\/(-?\d+(?:\.\d+)?)\/(-?\d+(?:\.\d+)?)/);
 if (hm) start = { z: +hm[1], lat: +hm[2], lng: +hm[3] };
 
-const map = L.map('map', { zoomControl: false, maxZoom: 21, minZoom: 3, tap: true }).setView([start.lat, start.lng], start.z);
-L.control.scale({ position: 'bottomleft', imperial: true, metric: true, maxWidth: 160 }).addTo(map);
+const map = L.map('map', { zoomControl: false, maxZoom: 21, minZoom: 3 }).setView([start.lat, start.lng], start.z);
+L.control.scale({ position: 'bottomleft', imperial: true, metric: true, maxWidth: isMobile() ? 100 : 160 }).addTo(map);
 map.createPane('terrain'); map.getPane('terrain').style.zIndex = 250;
 map.createPane('server'); map.getPane('server').style.zIndex = 300;
 map.createPane('over'); map.getPane('over').style.zIndex = 350;
@@ -773,8 +838,8 @@ const TerrainLayer = L.GridLayer.extend({
 });
 const terrain = new TerrainLayer();
 terrain.on('tileunload', e => { if (e.tile && e.tile._ac) e.tile._ac.abort(); });
-terrain.on('loading', () => msg('Loading elevation…', false, 0));
-terrain.on('load', () => msg(''));
+terrain.on('loading', () => { if (!$('msg').textContent) msg('Loading elevation…', false, 0); });
+terrain.on('load', () => { if ($('msg').textContent === 'Loading elevation…') msg(''); });
 
 function sampleCached(latlng) {
   if (!map.hasLayer(terrain)) return null;
@@ -955,6 +1020,10 @@ function setPanel(open) {
 function syncSheetState() {
   const anyOpen = !$('panel').classList.contains('collapsed') || !$('annSheet').hidden || !$('exportSheet').hidden || $('profile').classList.contains('show');
   document.body.classList.toggle('sheet-open', isMobile() && anyOpen);
+  const sideOpen = !$('panel').classList.contains('collapsed') || !$('annSheet').hidden || !$('exportSheet').hidden;
+  document.body.classList.toggle('side-open', isMobile() && sideOpen);
+  document.body.classList.toggle('prof-open', $('profile').classList.contains('show'));
+  document.body.classList.toggle('draw-open', !$('drawBar').hidden);
 }
 $('collapse').addEventListener('click', () => setPanel(false));
 $('layersBtn').addEventListener('click', () => setPanel($('panel').classList.contains('collapsed')));
@@ -1038,24 +1107,79 @@ $('searchForm').addEventListener('submit', async e => {
     msg(c.address); if (isMobile()) setPanel(false);
   } catch (err) { msg('Search failed: ' + err.message, true); }
 });
-let locMarker = null;
-$('locateBtn').addEventListener('click', () => {
-  if (!navigator.geolocation) { msg('Location not available in this browser', true); return; }
+const loc = { watch: null, dot: null, ring: null, follow: false, last: null, gotFix: false, slowTimer: null };
+const locBtn = $('locateBtn');
+function setLocBtn(state) {          // off | track | follow
+  locBtn.classList.toggle('on', state === 'follow');
+  locBtn.classList.toggle('track', state === 'track');
+  locBtn.title = state === 'off' ? 'Show my location' : state === 'track' ? 'Center on my location' : 'Stop showing my location';
+}
+function locError(err) {
+  if (err.code === 3) {               // timeout: keep watching, just tell the person
+    if (!loc.gotFix) msg('Still waiting for a GPS fix… open sky helps.', false, 8000);
+    return;
+  }
+  let t;
+  if (err.code === 1 && window.top !== window.self) t = 'Location is blocked because this viewer is running inside another page (for example Google Apps Script). Open it from its own https address, such as GitHub Pages.';
+  else if (err.code === 1) t = isIOS
+    ? 'Location is blocked. On iPhone: Settings → Privacy & Security → Location Services → Safari Websites → “While Using the App”, then reload this page.'
+    : 'Location permission was denied. Allow location for this site in your browser settings, then reload.';
+  else if (err.code === 2) {          // often transient on iPhone (indoors, Wi-Fi changes) — keep watching
+    if (!loc.gotFix) msg('Position unavailable right now — still trying. Check that Location Services is on.', false, 10000);
+    return;
+  }
+  else t = 'Could not get location: ' + (err.message || 'unknown error');
+  msg(t, true, 15000);
+  stopLocate();
+}
+function onPos(p) {
+  const ll = L.latLng(p.coords.latitude, p.coords.longitude), acc = Math.max(1, p.coords.accuracy || 0);
+  loc.last = p; clearTimeout(loc.slowTimer);
+  if (!loc.dot) {
+    loc.ring = L.circle(ll, { radius: acc, color: '#2d7dd2', weight: 1, opacity: 0.6, fillColor: '#2d7dd2', fillOpacity: 0.12, interactive: false }).addTo(map);
+    loc.dot = L.circleMarker(ll, { radius: 8, color: '#fff', weight: 3, fillColor: '#2d7dd2', fillOpacity: 1, interactive: false }).addTo(map);
+  } else { loc.dot.setLatLng(ll); loc.ring.setLatLng(ll).setRadius(acc); }
+  if (!loc.gotFix) {
+    loc.gotFix = true;
+    map.setView(ll, Math.max(map.getZoom(), 17));
+    msg('Your location (±' + fmtDist(acc) + ')', false, 5000);
+  } else if (loc.follow && !map.getBounds().pad(-0.25).contains(ll)) {
+    map.panTo(ll, { animate: true });
+  }
+}
+function startLocate() {
+  if (!('geolocation' in navigator)) { msg('This browser has no location support', true); return; }
+  if (!window.isSecureContext) {
+    msg('Location only works when the page is opened from an https address (like your GitHub Pages link), not as a downloaded file.', true, 15000);
+    return;
+  }
+  loc.follow = true; loc.gotFix = false; setLocBtn('follow');
   msg('Finding you…', false, 0);
-  navigator.geolocation.getCurrentPosition(p => {
-    const ll = [p.coords.latitude, p.coords.longitude];
-    map.setView(ll, Math.max(map.getZoom(), 16));
-    if (locMarker) locMarker.setLatLng(ll); else locMarker = L.circleMarker(ll, { radius: 8, color: '#fff', weight: 3, fillColor: '#2d7dd2', fillOpacity: 1 }).addTo(map);
-    msg('');
-  }, err => msg('Could not get location: ' + err.message + (location.protocol === 'file:' ? ' (location needs the page served over https)' : ''), true, 8000), { enableHighAccuracy: true, timeout: 10000 });
+  loc.slowTimer = setTimeout(() => { if (!loc.gotFix) msg('Still waiting for a GPS fix… if nothing happens, check location permission for this site.', false, 10000); }, 12000);
+  loc.watch = navigator.geolocation.watchPosition(onPos, locError, { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 });
+}
+function stopLocate() {
+  if (loc.watch != null) navigator.geolocation.clearWatch(loc.watch);
+  clearTimeout(loc.slowTimer);
+  loc.watch = null; loc.follow = false; loc.gotFix = false;
+  if (loc.dot) { map.removeLayer(loc.dot); map.removeLayer(loc.ring); loc.dot = loc.ring = null; }
+  setLocBtn('off');
+}
+locBtn.addEventListener('click', () => {
+  if (loc.watch == null) startLocate();
+  else if (!loc.follow) {
+    loc.follow = true; setLocBtn('follow');
+    if (loc.last) map.setView([loc.last.coords.latitude, loc.last.coords.longitude], Math.max(map.getZoom(), 17));
+  } else { stopLocate(); msg('Location off'); }
 });
+map.on('dragstart', () => { if (loc.follow) { loc.follow = false; setLocBtn('track'); } });
 
 /* =====================================================================
    ANNOTATIONS
    ===================================================================== */
 const SWATCHES = ['#e4572e', '#f2a541', '#f6e05e', '#2fbf71', '#2f6f5e', '#2d7dd2', '#7b5ea7', '#ffffff', '#1c1c1e'];
 const D = { color: '#e4572e', weight: 3, fillOpacity: 0.2, dash: false, size: 18 };
-try { Object.assign(D, JSON.parse(store.get('tv_annDefaults') || '{}')); } catch (e) {}
+try { Object.assign(D, JSON.parse(store.get('tv_annDefaults') || '{}')); D.dash = false; } catch (e) {}
 const ann = L.featureGroup().addTo(map);
 let sel = null, textMode = false, curShape = null;
 
@@ -1079,13 +1203,10 @@ function applyStyle(layer) {
   else layer.setStyle({ color: a.color, weight: a.weight, opacity: 1, fillColor: a.color, fillOpacity: a.kind === 'line' ? 0 : a.fillOpacity, dashArray: dashFor(a) });
   if (layer.getTooltip()) layer.unbindTooltip();
   if (a.label && a.kind !== 'text') {
-    layer.bindTooltip(esc(a.label), {
-      permanent: true, interactive: false, className: 'ann-label',
+    layer.bindTooltip(`<span style="${haloCss(a.color, 13)}">${esc(a.label)}</span>`, {
+      permanent: true, interactive: false, className: 'ann-label', opacity: 1,
       direction: a.kind === 'point' ? 'right' : 'center', offset: a.kind === 'point' ? [8, -20] : [0, 0],
     });
-    const tt = layer.getTooltip(); tt.options.opacity = 1;
-    layer.once('tooltipopen', () => { const el = tt.getElement(); if (el) el.style.cssText += ';' + haloCss(a.color, 13); });
-    if (map.hasLayer(layer)) { layer.closeTooltip(); layer.openTooltip(); const el = tt.getElement(); if (el) el.style.cssText += ';' + haloCss(a.color, 13); }
   }
 }
 function wireLayer(layer) {
@@ -1184,7 +1305,7 @@ editProp('annLabel', 'label');
 editProp('annText', 'text');
 editProp('annWeight', 'weight', v => v + ' px', 'weight');
 editProp('annFill', 'fillOpacity', v => Math.round(v * 100) + '%', 'fillOpacity');
-editProp('annDash', 'dash', null, 'dash');
+editProp('annDash', 'dash');
 editProp('annSize', 'size', v => v + ' px', 'size');
 $('annLabel').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } });
 $('annDone').addEventListener('click', () => deselect());
@@ -1220,6 +1341,7 @@ function setDrawingUI(shape) {
   $('drawUndo').style.display = (shape === 'Line' || shape === 'Polygon') ? '' : 'none';
   $('drawFinish').style.display = (shape === 'Line' || shape === 'Polygon') ? '' : 'none';
   document.body.classList.toggle('drawing', drawing);
+  if (drawing) map.doubleClickZoom.disable(); else if (!profile.drawing) setTimeout(() => { if (!curShape && !profile.drawing) map.doubleClickZoom.enable(); }, 400);
 }
 function startTool(shape) {
   deselect();
@@ -1254,18 +1376,26 @@ map.on('pm:create', e => {
 map.on('click', e => {
   if (!textMode) return;
   const m = L.marker(e.latlng, { draggable: false });
-  m.ann = { kind: 'text', text: 'Label', color: D.color === '#1c1c1e' ? D.color : (D.color), size: D.size, label: '' };
+  m.ann = { kind: 'text', text: 'Label', color: D.color, size: D.size, label: '' };
   ann.addLayer(m); wireLayer(m); applyStyle(m);
   stopTool(); select(m); saveAnn();
   setTimeout(() => { const t = $('annText'); t.focus(); t.select(); }, 60);
 });
 function openDrawBar(open) {
-  $('drawBar').hidden = !open; $('annBtn').classList.toggle('on', open);
+  $('drawBar').hidden = !open; $('annBtn').classList.toggle('on', open); syncSheetState();
   if (!open) { stopTool(); deselect(); }
   else { closeProfile(); map.closePopup(); if (isMobile()) setPanel(false); }
 }
 $('annBtn').addEventListener('click', () => openDrawBar($('drawBar').hidden));
 $('drawClose').addEventListener('click', () => openDrawBar(false));
+$('drawGps').addEventListener('click', () => {
+  if (!loc.last) { msg('Getting your location first — tap GPS pt again once the blue dot appears.', false, 7000); if (loc.watch == null) startLocate(); return; }
+  stopTool(); deselect();
+  const c = loc.last.coords, m = L.marker([c.latitude, c.longitude]);
+  m.ann = { kind: 'point', color: D.color, weight: D.weight, fillOpacity: D.fillOpacity, dash: false, label: 'GPS ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), size: D.size, accuracy: Math.round(c.accuracy) };
+  ann.addLayer(m); wireLayer(m); applyStyle(m); saveAnn(); select(m);
+  msg('Point added at your location (±' + fmtDist(c.accuracy) + ')');
+});
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   if (curShape) stopTool(); else if (sel) deselect();
@@ -1507,11 +1637,22 @@ function pageLayout() {
   const m = 0.35 * 72, head = 0.5 * 72, foot = 0.82 * 72;
   return { W, H, m, head, foot, mx: m, my: m + foot, mw: W - 2 * m, mh: H - 2 * m - head - foot };
 }
+function safeInsets() {
+  const cs = getComputedStyle($('saProbe'));
+  return { t: parseFloat(cs.paddingTop) || 0, r: parseFloat(cs.paddingRight) || 0, b: parseFloat(cs.paddingBottom) || 0, l: parseFloat(cs.paddingLeft) || 0 };
+}
 function availRect() {
-  const c = map.getContainer().getBoundingClientRect();
-  let l = 12, t = 12, r = c.width - 64, b = c.height - 56;
-  if (isMobile()) { const s = $('exportSheet').getBoundingClientRect(); r = c.width - 62; t = 64; b = Math.min(c.height - 12, s.top - 10); l = 10; }
-  else { l = 336; t = 40; }
+  const c = map.getContainer().getBoundingClientRect(), sa = safeInsets();
+  let l = 12 + sa.l, t = 34 + sa.t, r = c.width - 12 - sa.r, b = c.height - 12 - sa.b;
+  const tb = $('toolbar').getBoundingClientRect(); r = Math.min(r, tb.left - 10);
+  const sh = $('exportSheet');
+  if (!sh.hidden) {
+    const s = sh.getBoundingClientRect();
+    if (s.width < c.width * 0.7) l = Math.max(l, s.right + 12);   // side panel
+    else b = Math.min(b, s.top - 10);                              // bottom sheet
+  }
+  const st = $('status');
+  if (getComputedStyle(st).display !== 'none') b = Math.min(b, st.getBoundingClientRect().top - 30);
   return { l, t, r, b };
 }
 function placeFrame() {
@@ -1544,7 +1685,8 @@ function updateExportInfo() {
   if (!exp.frame) return;
   const P = exportPlan();
   const inchFt = P.scale * 0.0254 * M2FT;
-  const resTxt = S.units === 'ft' ? (P.res * M2FT * 12).toFixed(P.res * M2FT * 12 < 10 ? 1 : 0) + ' in' : P.res.toFixed(2) + ' m';
+  const resIn = P.res * M2FT * 12;
+  const resTxt = S.units === 'ft' ? (resIn < 12 ? resIn.toFixed(resIn < 10 ? 1 : 0) + ' in' : (resIn / 12).toFixed(1) + ' ft') : P.res.toFixed(2) + ' m';
   $('expInfo').innerHTML =
     `Scale <b>1:${Math.round(P.scale).toLocaleString()}</b> · 1 in = <b>${inchFt < 5280 ? Math.round(inchFt).toLocaleString() + ' ft' : (inchFt / 5280).toFixed(2) + ' mi'}</b><br>` +
     `Area <b>${fmtDist(P.groundW)}</b> wide · detail <b>${resTxt}</b>/pixel<br>` +
@@ -1558,6 +1700,7 @@ function openExport(fitBounds) {
   openDrawBar(false); closeProfile(); setPanel(false); map.closePopup();
   exp.on = true; exp.pdf = null;
   document.body.classList.add('exporting');
+  $('expMore').open = !isMobile();
   $('exportSheet').hidden = false; $('frame').style.display = 'block';
   $('expResult').hidden = true; $('expProgress').hidden = true; $('expGo').hidden = false;
   $('exportBtn').classList.add('on');
@@ -1579,6 +1722,11 @@ function closeExport() {
 }
 $('exportBtn').addEventListener('click', () => exp.on ? closeExport() : openExport());
 $('expClose').addEventListener('click', closeExport);
+if (window.ResizeObserver) {
+  new ResizeObserver(() => { if (exp.on) placeFrame(); }).observe($('exportSheet'));
+  new ResizeObserver(() => { const h = $('drawBar').offsetHeight; if (h) document.documentElement.style.setProperty('--dbh', (h + 6) + 'px'); }).observe($('drawBar'));
+}
+$('expMore').addEventListener('toggle', () => { if (exp.on) requestAnimationFrame(placeFrame); });
 map.on('move zoom', () => { if (exp.on) { updateExportInfo(); $('expResult').hidden = true; $('expGo').hidden = false; } });
 $('expPage').addEventListener('change', e => { exp.page = e.target.value; placeFrame(); });
 $('expMargins').addEventListener('change', e => { exp.margins = e.target.checked; placeFrame(); });
@@ -1766,7 +1914,7 @@ function pdfStr(s) {
   return '(' + o + ')';
 }
 function latin1(s) { const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i) & 255; return u; }
-const n2 = v => (+v).toFixed(2).replace(/\.?0+$/, '') || '0';
+const n2 = v => { const t = (+v).toFixed(2); return t.indexOf('.') < 0 ? t : t.replace(/0+$/, '').replace(/\.$/, ''); };
 function buildPdf(o) {
   const { lay, jpeg, imgW, imgH } = o;
   const objs = [];
@@ -1871,7 +2019,8 @@ $('expGo').addEventListener('click', async () => {
     const mb = (pdf.size / 1048576).toFixed(1);
     setProgress(`Done in ${((performance.now() - t0) / 1000).toFixed(0)} s · ${mb} MB` + (r.notes.length ? ' — ' + r.notes.join('; ') : ''), 1);
     $('expSave').textContent = isTouch && navigator.canShare ? `Save / Share PDF (${mb} MB)` : `Save PDF (${mb} MB)`;
-    $('expResult').hidden = false;
+    $('expResult').hidden = false; $('expGo').hidden = true;
+    $('expResult').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   } catch (err) {
     console.error(err);
     setProgress('Export failed: ' + err.message, 0);
@@ -1883,6 +2032,24 @@ $('expGo').addEventListener('click', async () => {
 $('expSave').addEventListener('click', () => { if (exp.pdf) saveFile(exp.pdf, exp.name); });
 
 /* =====================================================================
+   On-screen keyboard: keep the open sheet above it (iOS Safari)
+   ===================================================================== */
+if (window.visualViewport) {
+  const vv = window.visualViewport;
+  const onVV = () => {
+    const kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+    const open = kb > 80;
+    document.documentElement.style.setProperty('--kb', (open ? kb : 0) + 'px');
+    document.documentElement.classList.toggle('kb-open', open);
+    if (!open && (window.scrollY || document.documentElement.scrollTop)) window.scrollTo(0, 0);
+  };
+  vv.addEventListener('resize', onVV); vv.addEventListener('scroll', onVV);
+}
+document.addEventListener('focusout', () => setTimeout(() => { if (!document.activeElement || document.activeElement === document.body) window.scrollTo(0, 0); }, 60));
+window.addEventListener('orientationchange', () => setTimeout(() => { map.invalidateSize(); if (exp.on) placeFrame(); if (profile.data) drawProfile(); }, 350));
+matchMedia(PHONE_Q).addEventListener('change', () => { map.invalidateSize(); syncSheetState(); });
+
+/* =====================================================================
    Init
    ===================================================================== */
 setBase('esriImg');
@@ -1891,7 +2058,7 @@ terrain.addTo(map);
 $('lrmR').value = toDisp(S.lrmRange).toFixed(1);
 syncRangeInputs(); updateVisibility(); updateLegend();
 if (!window.GeoTIFF) msg('GeoTIFF library failed to load — terrain layer unavailable. Use "USGS ready-made layers".', true, 0);
-window.__tv = { map, ann, exportPlan, composeMap, buildPdf, openExport, S };
+window.__tv = { map, ann, exportPlan, composeMap, buildPdf, openExport, S, loc };
 })();
 </script>
 </body>
