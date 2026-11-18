@@ -1132,19 +1132,33 @@ function nodeBounds(m, key) {
   const [d, x, y] = key.split('-').map(Number), b = m.ept.bounds, size = (b[3] - b[0]) / Math.pow(2, d);
   return [b[0] + x * size, b[1] + y * size, b[0] + (x + 1) * size, b[1] + (y + 1) * size];
 }
+// fetch with retries — S3 occasionally answers 503 "slow down" or drops a request on cell networks
+async function fetchRetry(url, signal, tries = 3) {
+  for (let i = 0; ; i++) {
+    try { const r = await fetch(url, { signal }); if (r.ok) return r; if (r.status === 404 || i >= tries - 1) throw new Error('HTTP ' + r.status); }
+    catch (e) { if (e.name === 'AbortError' || i >= tries - 1) throw e; }
+    await new Promise(res => setTimeout(res, 600 * (i + 1) + Math.random() * 400));
+  }
+}
+// sub-hierarchy downloads are shared: neighbouring tiles wait for the same one instead of skipping it
+function loadSubHier(m, key) {
+  if (!m.loading) m.loading = new Map();
+  if (!m.loading.has(key)) {
+    const p = fetchRetry(m.base + 'ept-hierarchy/' + key + '.json').then(r => r.json()).then(j => { for (const [k, v] of Object.entries(j)) m.hier.set(k, v); m.loaded.add(key); });
+    m.loading.set(key, p); p.catch(() => m.loading.delete(key));     // failed: the next tile tries again
+  }
+  return m.loading.get(key);
+}
 async function eptNodes(m, bb, maxDepth) {
   const out = [], stack = ['0-0-0-0'];
   while (stack.length) {
     const key = stack.pop();
-    let cnt = m.hier.get(key);
-    if (cnt === undefined) continue;
-    if (cnt === -1 && !m.loaded.has(key)) {
-      m.loaded.add(key);
-      try { const j = await (await fetch(m.base + 'ept-hierarchy/' + key + '.json')).json(); for (const [k, v] of Object.entries(j)) m.hier.set(k, v); } catch (e) { continue; }
-      cnt = m.hier.get(key);
-    }
     const nb = nodeBounds(m, key);
     if (nb[2] < bb[0] || nb[0] > bb[2] || nb[3] < bb[1] || nb[1] > bb[3]) continue;
+    let cnt = m.hier.get(key);
+    if (cnt === undefined) continue;
+    if (cnt === -1 && !m.loaded.has(key)) await loadSubHier(m, key);   // errors propagate (no silently thin tiles)
+    cnt = m.hier.get(key);
     if (cnt > 0) out.push({ key, count: cnt });
     const [d, x, y, z] = key.split('-').map(Number);
     if (d >= maxDepth) continue;
@@ -1162,7 +1176,7 @@ async function eptPoints(m, key) {
   const ck = m.name + '/' + key;
   if (LIDAR.nodes.has(ck)) { const v = LIDAR.nodes.get(ck); LIDAR.nodes.delete(ck); LIDAR.nodes.set(ck, v); return v; }
   const p = withSlot(async () => {
-    const ab = await (await fetch(m.base + 'ept-data/' + key + '.laz')).arrayBuffer();
+    const ab = await (await fetchRetry(m.base + 'ept-data/' + key + '.laz')).arrayBuffer();
     const lp = await lazReady(), bytes = new Uint8Array(ab), hv = new DataView(ab);
     const sx = hv.getFloat64(131, true), sy = hv.getFloat64(139, true), sz = hv.getFloat64(147, true);
     const ox = hv.getFloat64(155, true), oy = hv.getFloat64(163, true), oz = hv.getFloat64(171, true);
@@ -1188,6 +1202,27 @@ async function eptPoints(m, key) {
 }
 
 /* ---- small raster helpers (W×H Float32 grids) ---- */
+function growRound(g, W, H) {
+  const out = g.slice();
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const o = y * W + x; if (g[o] === g[o]) continue;
+    let s = 0, w = 0;
+    for (let j = -1; j <= 1; j++) { const yy = y + j; if (yy < 0 || yy >= H) continue;
+      for (let k = -1; k <= 1; k++) { const xx = x + k; if (xx < 0 || xx >= W) continue; const v = g[yy * W + xx]; if (v === v) { const wk = (j ? 1 : 2) * (k ? 1 : 2); s += v * wk; w += wk; } } }
+    if (w >= 3) out[o] = s / w;                                       // an edge neighbour plus more → corners round off
+  }
+  return out;
+}
+function blur3(g, W, H) {
+  const out = new Float32Array(g.length);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    let s = 0, w = 0;
+    for (let j = -1; j <= 1; j++) { const yy = y + j; if (yy < 0 || yy >= H) continue;
+      for (let k = -1; k <= 1; k++) { const xx = x + k; if (xx < 0 || xx >= W) continue; const wk = (j ? 1 : 2) * (k ? 1 : 2); s += g[yy * W + xx] * wk; w += wk; } }
+    out[y * W + x] = s / w;
+  }
+  return out;
+}
 // sum of v·w and of w over a (2R+1)² window, via integral images
 function boxSums(v, wt, W, H, R) {
   const W1 = W + 1, Iv = new Float64Array(W1 * (H + 1)), Iw = new Float64Array(W1 * (H + 1));
@@ -1285,21 +1320,22 @@ async function fetchLidarSurface(r, signal) {
       const F = t ? fillGaps(L, W, H, R, 0.5) : L;
       for (let i = 0; i < N; i++) if (F[i] === F[i] && !(F[i] <= out[i])) out[i] = F[i];
     }
-    // pixels no point reached: fill from around, then gentle 3×3 smoothing to round the crowns
-    let filled = out; for (let k = 0; k < 3; k++) filled = fillGaps(filled, W, H, 1);   // grow in small steps → round, not boxy
-    const sm = new Float32Array(N);
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      let s2 = 0, w2 = 0;
-      for (let j = -1; j <= 1; j++) for (let k = -1; k <= 1; k++) { const yy = y + j, xx = x + k; if (yy < 0 || xx < 0 || yy >= H || xx >= W) continue; const v = filled[yy * W + xx]; if (!(v === v)) continue; const wk = (j ? 1 : 2) * (k ? 1 : 2); s2 += v * wk; w2 += wk; }
-      sm[y * W + x] = w2 ? s2 / w2 : 0;
-    }
+    // pixels no point reached: grow from neighbours with a round (binomial) kernel, so sparse returns
+    // become rounded crowns rather than square blocks; then smooth — more where points are sparser
+    let filled = out;
+    for (let k = 0; k < 8; k++) { let gaps = 0; for (let i = 0; i < N; i++) if (!(filled[i] === filled[i])) gaps++; if (!gaps) break; filled = growRound(filled, W, H); }
+    for (let i = 0; i < N; i++) if (!(filled[i] === filled[i])) filled[i] = 0;
+    let raw = 0; for (let i = 0; i < N; i++) if (top[i] === top[i]) raw++;
+    let sm = filled;
+    for (let pss = 0, passes = raw > N * 0.6 ? 1 : raw > N * 0.3 ? 2 : 4; pss < passes; pss++) sm = blur3(sm, W, H);
     return { chm: sm, source: s.n, year: s.y };
   }
   return null;
 }
 
 /* ---- keep processed canopy tiles on the device (Cache Storage), so revisits are instant & offline ---- */
-const CHM_CACHE = 'tv-canopy-v2', chmKey = r => `https://tv-cache.invalid/chm/${r.z}/${r.x}/${r.y}`;
+const CHM_CACHE = 'tv-canopy-v3', chmKey = r => `https://tv-cache.invalid/chm/${r.z}/${r.x}/${r.y}`;
+try { window.caches && caches.delete('tv-canopy-v2'); } catch (e) {}   // tiles saved by the earlier, buggy build
 async function chmCacheGet(r) {
   try {
     if (!window.caches || !isSecureContext) return null;
