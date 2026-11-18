@@ -462,6 +462,10 @@
         <label for="treesOn">Treeshade <span style="color:var(--ink-3);font-size:12px">— shade the tree tops in 3D</span></label>
         <label class="switch"><input type="checkbox" id="treesOn"><span></span></label>
       </div>
+      <div class="row" id="treeAmtRow" style="display:none;margin-top:6px">
+        <label for="treeAmt">Tree relief <span id="treeAmtV" style="color:var(--ink-3);font-size:12px"></span></label>
+        <input type="range" id="treeAmt" min="0.3" max="1.5" step="0.05" style="width:52%">
+      </div>
       <p class="note" id="treeNote" style="display:none;margin-top:0"></p>
       <div id="sunCtl">
         <div class="stack" id="azRow"><div class="lbl"><span>Sun direction</span><span class="val" id="azV">315°</span></div>
@@ -834,6 +838,7 @@ const store = {
 };
 if (store.get('tv_units') === 'm') S.units = 'm';
 S.trees = store.get('tv_trees') === '1';
+S.treeAmt = +(store.get('tv_treeAmt') || 1) || 1;
 
 /* =====================================================================
    Helpers
@@ -1083,7 +1088,7 @@ const LIDAR = {
   index: 'https://raw.githubusercontent.com/hobuinc/usgs-lidar/master/boundaries/resources.geojson',
   lazBase: 'https://cdn.jsdelivr.net/npm/laz-perf@0.0.7/lib/web/',
   minZoom: 15, sets: SWMO_EPT, fullLoaded: false, meta: new Map(), nodes: new Map(), lz: null,
-  active: 0, queue: [], unit: new Map(), warned: false, budget: 2500000,
+  active: 0, queue: [], unit: new Map(), warned: false, budget: 3000000,
 };
 function datasetYear(name) { const m = name.match(/D(\d{2})$/); if (m) return 2000 + +m[1]; const y = name.match(/(?:19|20)\d{2}/); return y ? +y[0] : 0; }
 function inRing(x, y, ring) { let c = false; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const [xi, yi] = ring[i], [xj, yj] = ring[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; }
@@ -1165,80 +1170,154 @@ async function eptPoints(m, key) {
     const lz = new lp.LASZip(); lz.open(fptr, bytes.length);
     const n = lz.getCount(), len = lz.getPointLength(), fmt = lz.getPointFormat(), pptr = lp._malloc(len);
     const x0 = nodeBounds(m, key)[0], y0 = nodeBounds(m, key)[1];
-    const X = new Float32Array(n), Y = new Float32Array(n), Z = new Float32Array(n); let k = 0;
+    const X = new Float32Array(n), Y = new Float32Array(n), Z = new Float32Array(n), C = new Uint8Array(n); let k = 0;
     try {
-      let H = lp.HEAPU8, dv = new DataView(H.buffer, pptr, len);
       for (let i = 0; i < n; i++) {
         lz.getPoint(pptr);
-        if (H.buffer !== lp.HEAPU8.buffer) { H = lp.HEAPU8; dv = new DataView(H.buffer, pptr, len); }
+        const H = lp.HEAPU8, dv = new DataView(H.buffer, pptr, len);
         const cls = fmt >= 6 ? H[pptr + 16] : (H[pptr + 15] & 31);
         if (cls === 7 || cls === 18) continue;                       // low / high noise
-        X[k] = dv.getInt32(0, true) * sx + ox - x0; Y[k] = dv.getInt32(4, true) * sy + oy - y0; Z[k] = (dv.getInt32(8, true) * sz + oz) * m.zf; k++;
+        X[k] = dv.getInt32(0, true) * sx + ox - x0; Y[k] = dv.getInt32(4, true) * sy + oy - y0; Z[k] = (dv.getInt32(8, true) * sz + oz) * m.zf; C[k] = cls; k++;
       }
     } finally { lz.delete(); lp._free(fptr); lp._free(pptr); }
-    return { x0, y0, X: X.subarray(0, k), Y: Y.subarray(0, k), Z: Z.subarray(0, k) };
+    return { x0, y0, X: X.subarray(0, k), Y: Y.subarray(0, k), Z: Z.subarray(0, k), C: C.subarray(0, k) };
   });
   LIDAR.nodes.set(ck, p); p.catch(() => LIDAR.nodes.delete(ck));
   while (LIDAR.nodes.size > 80) LIDAR.nodes.delete(LIDAR.nodes.keys().next().value);
   return p;
 }
-/** Highest-return surface (m) on the DEM raster's grid, or null when no lidar covers it. */
+
+/* ---- small raster helpers (W×H Float32 grids) ---- */
+// sum of v·w and of w over a (2R+1)² window, via integral images
+function boxSums(v, wt, W, H, R) {
+  const W1 = W + 1, Iv = new Float64Array(W1 * (H + 1)), Iw = new Float64Array(W1 * (H + 1));
+  for (let y = 0; y < H; y++) { let sv = 0, sw = 0; for (let x = 0; x < W; x++) { const o = y * W + x; sv += v[o] * wt[o]; sw += wt[o]; const q = (y + 1) * W1 + x + 1; Iv[q] = Iv[q - W1] + sv; Iw[q] = Iw[q - W1] + sw; } }
+  const S = new Float32Array(W * H), N = new Float32Array(W * H);
+  for (let y = 0; y < H; y++) { const y0 = Math.max(0, y - R), y1 = Math.min(H, y + R + 1);
+    for (let x = 0; x < W; x++) { const x0 = Math.max(0, x - R), x1 = Math.min(W, x + R + 1), a = y0 * W1 + x0, b = y0 * W1 + x1, c = y1 * W1 + x0, d = y1 * W1 + x1, o = y * W + x;
+      S[o] = Iv[d] - Iv[b] - Iv[c] + Iv[a]; N[o] = Iw[d] - Iw[b] - Iw[c] + Iw[a]; } }
+  return { S, N };
+}
+// fill NaN cells from valid neighbours (normalized convolution); minFrac>0 only fills cells mostly surrounded by data
+function fillGaps(g, W, H, R, minFrac = 0) {
+  const v = new Float32Array(g.length), w = new Float32Array(g.length);
+  for (let i = 0; i < g.length; i++) if (g[i] === g[i]) { v[i] = g[i]; w[i] = 1; }
+  const { S, N } = boxSums(v, w, W, H, R), full = (2 * R + 1) * (2 * R + 1), out = g.slice();
+  for (let i = 0; i < g.length; i++) if (!(g[i] === g[i]) && N[i] > 0 && N[i] >= minFrac * full) out[i] = S[i] / N[i];
+  return out;
+}
+
+/**
+ * Clean canopy-height grid (m above ground) on the DEM raster's grid, built from the USGS lidar point cloud:
+ *  - tree tops = highest return per pixel; ground = the same flight's ground-classified points (class 2),
+ *    so top and ground line up exactly; the 3DEP DEM only fills ground where no ground point landed
+ *  - isolated spikes (birds, wires) dropped, then a "pit-free" canopy model: each height layer's small gaps
+ *    are bridged so crowns come out as solid, rounded shapes instead of speckle
+ */
 async function fetchLidarSurface(r, signal) {
   const ts = WORLD / Math.pow(2, r.z), W = r.w, H = r.h, res = ts / (W - 2 * r.buf);
   const bb = [-ORIGIN + r.x * ts - r.buf * res, ORIGIN - (r.y + 1) * ts - r.buf * res, -ORIGIN + (r.x + 1) * ts + r.buf * res, ORIGIN - r.y * ts + r.buf * res];
-  const cLat = y2lat((bb[1] + bb[3]) / 2), cLng = x2lon((bb[0] + bb[2]) / 2);
+  const cLat = y2lat((bb[1] + bb[3]) / 2), cLng = x2lon((bb[0] + bb[2]) / 2), gres = res * Math.cos(cLat * Math.PI / 180);
+  const abort = () => { if (signal && signal.aborted) throw new DOMException('aborted', 'AbortError'); };
   let sets = lidarSetsAt(cLng, cLat);
   if (!sets.length && !LIDAR.fullLoaded && !(cLng > -94.3 && cLng < -91.6 && cLat > 36.3 && cLat < 38)) { await loadFullLidarIndex(); sets = lidarSetsAt(cLng, cLat); }
   for (const s of sets.slice(0, 3)) {
-    if (signal && signal.aborted) throw new DOMException('aborted', 'AbortError');
+    abort();
     let m; try { m = await eptMeta(s.n); } catch (e) { continue; }
     const cube = m.ept.bounds[3] - m.ept.bounds[0], span = m.ept.span || 256;
-    const maxDepth = Math.max(0, Math.ceil(Math.log2(cube / (span * res * 0.75))));
-    const nodes = await eptNodes(m, bb, maxDepth);
-    const total = nodes.reduce((a, n) => a + n.count, 0);
-    if (!nodes.length) continue;
-    if (total > LIDAR.budget) return null;                           // too many points for this zoom
-    const top = new Float32Array(W * H).fill(-Infinity);
-    const lows = [];
+    // full detail: aim for ~2+ points per pixel, stepping down a level if that's too many for a phone
+    let depth = Math.max(0, Math.ceil(Math.log2(cube / (span * res * 0.5)))), nodes = [], total = 0;
+    for (;;) { nodes = await eptNodes(m, bb, depth); total = nodes.reduce((a, n) => a + n.count, 0); if (total <= LIDAR.budget || depth <= 1) break; depth--; }
+    if (!nodes.length || total > LIDAR.budget * 1.5) continue;
+    const N = W * H, top = new Float32Array(N).fill(NaN), gs = new Float32Array(N), gn = new Uint16Array(N);
+    let calib = [];
     for (const nd of nodes) {
-      if (signal && signal.aborted) throw new DOMException('aborted', 'AbortError');
-      const P = await eptPoints(m, nd.key);
-      const dx = P.x0 - bb[0], dy = bb[3] - P.y0;
+      abort();
+      const P = await eptPoints(m, nd.key), dx = P.x0 - bb[0], dy = bb[3] - P.y0;
       for (let i = 0; i < P.X.length; i++) {
         const ix = Math.floor((P.X[i] + dx) / res), iy = Math.floor((dy - P.Y[i]) / res);
         if (ix < 0 || iy < 0 || ix >= W || iy >= H) continue;
         const o = iy * W + ix, z = P.Z[i];
-        if (z > top[o]) top[o] = z;
-        if (!m.calibrated && (i & 63) === 0) lows.push([z, o]);
+        if (!(z <= top[o])) top[o] = z;
+        if (P.C[i] === 2) { gs[o] += z; gn[o]++; if (!m.calibrated && (i & 15) === 0) calib.push(z / r.data[o]); }
       }
     }
-    // Some flights store heights in feet: compare with the bare-earth DEM once per dataset.
-    if (!m.calibrated && lows.length > 50) {
-      const ratios = lows.map(([z, o]) => z / r.data[o]).filter(v => isFinite(v) && v > 0).sort((a, b) => a - b);
-      const med = ratios[Math.floor(ratios.length * 0.2)];
-      if (med > 2.9 && med < 3.7) { m.zf = 0.3048006; for (let i = 0; i < top.length; i++) top[i] *= 0.3048006; LIDAR.nodes.forEach((v, k) => { if (k.startsWith(m.name + '/')) LIDAR.nodes.delete(k); }); }
+    // some flights store heights in feet: check the ground points against the bare-earth DEM once per dataset
+    if (!m.calibrated && calib.length > 50) {
+      calib = calib.filter(v => isFinite(v) && v > 0).sort((a, b) => a - b);
+      if (calib.length && calib[calib.length >> 1] > 2.9 && calib[calib.length >> 1] < 3.7) {
+        const f = 0.3048006; m.zf = f; for (let i = 0; i < N; i++) { top[i] *= f; gs[i] *= f; }
+        LIDAR.nodes.forEach((v, k) => { if (k.startsWith(m.name + '/')) LIDAR.nodes.delete(k); });
+      }
       m.calibrated = true;
     }
-    // fill small holes from neighbours, then fall back to bare earth; never below ground
-    let filled = 0;
-    for (let pass = 0; pass < 3; pass++) {
-      const src = top.slice();
-      for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
-        const o = y * W + x; if (src[o] !== -Infinity) continue;
-        let mx = -Infinity; for (const q of [o - 1, o + 1, o - W, o + W, o - W - 1, o - W + 1, o + W - 1, o + W + 1]) if (src[q] > mx) mx = src[q];
-        if (mx !== -Infinity) { top[o] = mx; filled++; }
-      }
+    // coverage: share of pixels with a point within ~2 px (sparse flights still count, empty edges don't)
+    const ind = new Float32Array(N), one = new Float32Array(N).fill(1);
+    for (let i = 0; i < N; i++) if (top[i] === top[i]) ind[i] = 1;
+    const cov = boxSums(ind, one, W, H, 2).S; let have = 0; for (let i = 0; i < N; i++) if (cov[i] > 0) have++;
+    if (have < N * 0.2) continue;                                    // tile mostly outside this flight
+    abort();
+    // ground: lidar ground where present; elsewhere DEM + the smoothed local lidar-vs-DEM offset
+    const off = new Float32Array(N).fill(NaN);
+    for (let i = 0; i < N; i++) if (gn[i] && r.data[i] === r.data[i]) off[i] = gs[i] / gn[i] - r.data[i];
+    let offF = fillGaps(off, W, H, Math.max(3, Math.round(6 / gres)));
+    offF = fillGaps(offF, W, H, Math.round(W / 4));
+    const chm = new Float32Array(N).fill(NaN);
+    for (let i = 0; i < N; i++) {
+      if (!(top[i] === top[i])) continue;
+      const g = gn[i] ? gs[i] / gn[i] : r.data[i] + (offF[i] === offF[i] ? offF[i] : 0);
+      let h = top[i] - g; if (h < 0.3) h = 0;
+      chm[i] = h > 55 ? NaN : h;                                     // > 55 m is not a Missouri tree
     }
-    let have = 0;
-    for (let i = 0; i < top.length; i++) {
-      const g = r.data[i];
-      if (top[i] === -Infinity || !(top[i] === top[i])) top[i] = g;
-      else { have++; if (g === g && top[i] < g - 1.5) top[i] = g; }
+    // drop lone spikes standing far above every neighbour
+    for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+      const o = y * W + x, h = chm[o]; if (!(h > 3)) continue;
+      let mx = -1; for (const q of [o - 1, o + 1, o - W, o + W, o - W - 1, o - W + 1, o + W - 1, o + W + 1]) if (chm[q] > mx) mx = chm[q];
+      if (mx >= 0 && h > mx + 6) chm[o] = NaN;
     }
-    if (have < top.length * 0.2) continue;                           // tile mostly outside this flight
-    return { surface: top, source: s.n, year: s.y };
+    // pit-free canopy: bridge small gaps inside each height layer, keep the highest layer per pixel
+    const R = Math.max(1, Math.round(1.2 / gres)), out = new Float32Array(N).fill(NaN);
+    for (const t of [0, 2, 5, 10, 15, 20, 25, 30]) {
+      abort();
+      const L = new Float32Array(N).fill(NaN); let any = false;
+      for (let i = 0; i < N; i++) if (chm[i] >= t) { L[i] = chm[i]; any = true; }
+      if (!any) break;
+      const F = t ? fillGaps(L, W, H, R, 0.5) : L;
+      for (let i = 0; i < N; i++) if (F[i] === F[i] && !(F[i] <= out[i])) out[i] = F[i];
+    }
+    // pixels no point reached: fill from around, then gentle 3×3 smoothing to round the crowns
+    let filled = out; for (let k = 0; k < 3; k++) filled = fillGaps(filled, W, H, 1);   // grow in small steps → round, not boxy
+    const sm = new Float32Array(N);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      let s2 = 0, w2 = 0;
+      for (let j = -1; j <= 1; j++) for (let k = -1; k <= 1; k++) { const yy = y + j, xx = x + k; if (yy < 0 || xx < 0 || yy >= H || xx >= W) continue; const v = filled[yy * W + xx]; if (!(v === v)) continue; const wk = (j ? 1 : 2) * (k ? 1 : 2); s2 += v * wk; w2 += wk; }
+      sm[y * W + x] = w2 ? s2 / w2 : 0;
+    }
+    return { chm: sm, source: s.n, year: s.y };
   }
   return null;
+}
+
+/* ---- keep processed canopy tiles on the device (Cache Storage), so revisits are instant & offline ---- */
+const CHM_CACHE = 'tv-canopy-v2', chmKey = r => `https://tv-cache.invalid/chm/${r.z}/${r.x}/${r.y}`;
+async function chmCacheGet(r) {
+  try {
+    if (!window.caches || !isSecureContext) return null;
+    const res = await (await caches.open(CHM_CACHE)).match(chmKey(r)); if (!res) return null;
+    const q = new Uint8Array(await res.arrayBuffer()); if (q.length !== r.w * r.h) return null;
+    const chm = new Float32Array(q.length); for (let i = 0; i < q.length; i++) chm[i] = q[i] * 0.2;
+    return { chm, source: res.headers.get('x-src') || '', year: +res.headers.get('x-year') || 0 };
+  } catch (e) { return null; }
+}
+let chmPuts = 0;
+async function chmCachePut(r, L) {
+  try {
+    if (!window.caches || !isSecureContext) return;
+    const q = new Uint8Array(L.chm.length); for (let i = 0; i < q.length; i++) { const v = Math.round(L.chm[i] / 0.2); q[i] = v > 255 ? 255 : v < 0 ? 0 : v; }
+    const c = await caches.open(CHM_CACHE);
+    await c.put(chmKey(r), new Response(q, { headers: { 'x-src': L.source, 'x-year': String(L.year || '') } }));
+    if (++chmPuts % 25 === 0) { const ks = await c.keys(); for (let i = 0; i < ks.length - 800; i++) await c.delete(ks[i]); }   // ~65 MB max
+  } catch (e) { /* storage full or private mode: just skip caching */ }
 }
 
 /* =====================================================================
@@ -1320,8 +1399,9 @@ async function ensureChm(r, signal) {
   if (!needsChm(r.z) || r.chm !== undefined) return r;
   if (r.z >= LIDAR.minZoom && r.lidar === undefined) {
     try {
-      const L2 = await fetchLidarSurface(r, signal);
-      r.lidar = L2 ? L2.surface : null; r.lidarSrc = L2 ? L2.source : null; r.lidarYear = L2 ? L2.year : null;
+      let L2 = await chmCacheGet(r);
+      if (!L2) { L2 = await fetchLidarSurface(r, signal); if (L2) chmCachePut(r, L2); }
+      r.lidar = L2 ? L2.chm : null; r.lidarSrc = L2 ? L2.source : null; r.lidarYear = L2 ? L2.year : null;
       if (r.lidar) { r.chm = null; r.dsm = null; LIDAR.lastSrc = r.lidarSrc; updateTreeNote(); return r; }
     } catch (e) {
       if (e.name === 'AbortError') throw e;
@@ -1337,10 +1417,11 @@ async function ensureChm(r, signal) {
   }
   return r;
 }
+// r.lidar / r.chm hold canopy height (m); the shaded surface is ground + height × the Tree relief setting
 function surfaceOf(r) {
-  if (r.lidar) return r.lidar;
-  if (!r.chm) return r.data;
-  if (!r.dsm) { const n = r.data.length, o = new Float32Array(n); for (let i = 0; i < n; i++) o[i] = r.data[i] + r.chm[i]; r.dsm = o; }
+  const h = r.lidar || r.chm; if (!h) return r.data;
+  const k = S.treeAmt;
+  if (!r.dsm || r.dsmK !== k) { const n = r.data.length, o = new Float32Array(n); for (let i = 0; i < n; i++) o[i] = r.data[i] + h[i] * k; r.dsm = o; r.dsmK = k; }
   return r.dsm;
 }
 function sampleChm(latlng) {
@@ -1349,10 +1430,10 @@ function sampleChm(latlng) {
   const p = map.project(latlng, z), tx = Math.floor(p.x / TILE), ty = Math.floor(p.y / TILE);
   const r = terrain.cache.get(z + '/' + tx + '/' + ty); if (!r || !(r.chm || r.lidar)) return null;
   const sc = r.w / NPX, x = Math.round((p.x - tx * TILE) * sc + r.buf - 0.5), y = Math.round((p.y - ty * TILE) * sc + r.buf - 0.5), o = y * r.w + x;
-  if (r.lidar) { const h = r.lidar[o] - r.data[o]; return h === h ? Math.max(0, h) : null; }
+  if (r.lidar) { const h = r.lidar[o]; return h === h ? Math.max(0, h) : null; }
   return r.chm[o] ?? null;
 }
-function chmAt(r, idx) { return r.lidar ? Math.max(0, r.lidar[idx] - r.data[idx]) : (r.chm ? r.chm[idx] : 0); }
+function chmAt(r, idx) { return r.lidar ? r.lidar[idx] : (r.chm ? r.chm[idx] : 0); }
 function updateTreeNote() {
   const el = $('treeNote'); if (!el) return;
   const s = LIDAR.lastSrc ? LIDAR.sets.find(x => x.n === LIDAR.lastSrc) : null;
@@ -1553,10 +1634,13 @@ $('colorMode').addEventListener('change', e => {
   if (S.color === 'elev' && S.auto) applyAutoRange();
   if (S.color === 'canopy') { terrain.redraw(); updateLegend(); } else redrawSoon();
 });
-$('treesOn').checked = S.trees; $('treeNote').style.display = S.trees ? '' : 'none'; updateTreeNote();
+$('treesOn').checked = S.trees; $('treeNote').style.display = $('treeAmtRow').style.display = S.trees ? '' : 'none'; updateTreeNote();
+const showTreeAmt = () => { $('treeAmtV').textContent = Math.round(S.treeAmt * 100) + '%'; };
+$('treeAmt').value = S.treeAmt; showTreeAmt();
+$('treeAmt').addEventListener('input', e => { S.treeAmt = +e.target.value; showTreeAmt(); store.set('tv_treeAmt', String(S.treeAmt)); redrawSoon(); });
 $('treesOn').addEventListener('change', e => {
   S.trees = e.target.checked; store.set('tv_trees', S.trees ? '1' : '0');
-  $('treeNote').style.display = S.trees ? '' : 'none'; syncTreeAttribution();
+  $('treeNote').style.display = $('treeAmtRow').style.display = S.trees ? '' : 'none'; syncTreeAttribution();
   if (S.trees && map.getZoom() < LIDAR.minZoom) msg('Zoom in to level 15+ for lidar tree crowns (12–14 shows a satellite estimate)', false, 6000);
   terrain.redraw();
 });
@@ -3543,7 +3627,7 @@ async function api(payload) {
     const res = await fetch(SYNC.url, { method: 'POST', body: JSON.stringify(Object.assign({ token: SYNC.token }, payload)), headers: { 'Content-Type': 'text/plain;charset=utf-8' }, redirect: 'follow', signal: ctl.signal });
     const txt = await res.text(); let j;
     try { j = JSON.parse(txt); } catch (e) { throw new Error(/<html/i.test(txt) ? 'the web app returned a sign-in page — check it is deployed with access "Anyone"' : 'unexpected reply from the web app'); }
-    if (!j.ok) throw new Error(j.error || 'request failed');
+    if (!j.ok) { const er = new Error(j.error || 'request failed'); er.busy = !!j.busy || /lock|busy|too many|try again/i.test(j.error || ''); throw er; }
     return j;
   } catch (e) { if (e.name === 'AbortError') throw new Error('timed out'); if (e instanceof TypeError) throw new Error('could not reach the web app (offline or wrong URL)'); throw e; }
   finally { clearTimeout(t); }
@@ -3601,8 +3685,17 @@ async function syncNow(manual) {
     SYNC.seq = r.seq || SYNC.seq; SYNC.last = Date.now(); persistSyncState();
     setSyncStatus(syncSummary());
     if (manual) msg(`Synced — sent ${changes.length}, received ${n}`);
+    SYNC.retries = 0;
   } catch (e) {
-    setSyncStatus('Sync failed: ' + e.message, true);
+    // the sheet was busy with another device's sync (or Google was slow): quietly try again a few times
+    if (e.busy && (SYNC.retries || 0) < 4) {
+      SYNC.retries = (SYNC.retries || 0) + 1;
+      setSyncStatus(`Sheet busy — retrying (${SYNC.retries})… ` + syncSummary());
+      SYNC.again = false; SYNC.busy = false; scheduleSync(2000 * SYNC.retries + Math.random() * 2000);
+      return;
+    }
+    SYNC.retries = 0;
+    setSyncStatus('Sync failed: ' + e.message + (e.busy ? ' — your changes are saved here and will sync next time.' : ''), true);
     if (manual) msg('Sync failed: ' + e.message, true, 9000);
   } finally {
     SYNC.busy = false; persistSyncState();
@@ -3655,7 +3748,7 @@ initSnap(); refreshCones();
 try { const w = JSON.parse(store.get('tv_wx') || 'null'); if (w && Date.now() - w.fetched < 6 * 3600000) { HUNT.wx = w; HUNT.day = todayIdx(w); afterWx(); } } catch (e) {}
 setTimeout(maybeRefreshWx, 1200);
 setSyncStatus(syncSummary()); scheduleSync(2000);
-window.__tv = { CHM, LIDAR, terrain, map, ann, exportPlan, composeMap, buildPdf, openExport, S, loc, HUNT, CATS, syncNow, findLayer, huntLayers, windAt, land, SYNC, dirty: () => dirty, tomb: () => tomb, applyRemote, idb };
+window.__tv = { CHM, LIDAR, terrain, fetchLidarSurface, map, ann, exportPlan, composeMap, buildPdf, openExport, S, loc, HUNT, CATS, syncNow, findLayer, huntLayers, windAt, land, SYNC, dirty: () => dirty, tomb: () => tomb, applyRemote, idb };
 })();
 </script>
 </body>
