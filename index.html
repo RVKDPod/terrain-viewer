@@ -261,6 +261,36 @@
   .chip .e{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font-size:17px;background:var(--c);border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.3)}
   .chip:hover{background:rgba(118,118,128,0.1)}
   .chip.on{background:var(--accent-soft);color:var(--accent)}
+  #offSheet{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(58px + var(--sab));z-index:1004;padding:10px 12px;width:min(460px, calc(100% - 24px))}
+  #offSheet .off-head{display:flex;flex-direction:column;gap:2px;margin-bottom:6px}
+  #offSheet input[type=text]{width:100%;margin:2px 0 6px}
+  .off-opts{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;margin-bottom:6px}
+  .off-opts label{display:flex;align-items:center;gap:5px}
+  .off-est{font-size:12.5px;line-height:1.4;margin:4px 0 8px}
+  .off-bar{height:8px;border-radius:4px;background:rgba(127,127,127,.25);overflow:hidden}
+  #offProg{height:100%;width:0;background:var(--accent, #2f6f5e);transition:width .3s}
+  .off-item{display:flex;align-items:center;gap:6px;padding:6px 0;border-top:1px solid rgba(127,127,127,.18)}
+  .off-item .oi-main{flex:1;display:flex;flex-direction:column;min-width:0}
+  .off-item .oi-main span{font-size:12px;color:var(--ink-3)}
+  .off-item .btn{padding:4px 8px}
+  #trackBar{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(58px + var(--sab));z-index:1003;padding:8px 10px;width:min(520px, calc(100% - 90px))}
+  .tk-top{display:flex;align-items:baseline;gap:10px;margin-bottom:6px;font-variant-numeric:tabular-nums}
+  .tk-rec{color:#d81b60;font-weight:700;font-size:13px}
+  .tk-rec.paused{color:var(--ink-3)}
+  #tkStats{font-weight:600}
+  .tk-acc{margin-left:auto;font-size:12px;color:var(--ink-3)}
+  .tk-btns{display:flex;gap:6px;align-items:stretch}
+  .tk-btns .btn{flex:1 1 auto;white-space:nowrap;padding-left:8px;padding-right:8px}
+  #trackBar .tk-blood{background:#b00020;color:#fff;border-color:#b00020;font-weight:700;font-size:15px;flex:1.4 1 auto}
+  .tk-x{border:0;background:none;font-size:15px;padding:0 2px;cursor:pointer;opacity:.7}
+  body.tracking #scoutBar{display:none}
+  #pocketLock{position:fixed;inset:0;z-index:99999;background:#000;color:#777;display:flex;align-items:center;justify-content:center;text-align:center;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+  #pocketLock[hidden]{display:none}
+  #pocketLock .pl-rec{color:#d81b60;font-weight:700;margin-bottom:8px}
+  #pocketLock #plStats{font-size:22px;color:#aaa;margin-bottom:18px;font-variant-numeric:tabular-nums}
+  #pocketLock .pl-hint{font-size:13px;line-height:1.5}
+  #pocketLock.holding{background:#111}
+  .chip.track-chip{font-weight:700}
   #scoutBar{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(58px + var(--sab));z-index:1002;padding:6px;max-width:min(860px, calc(100% - 90px))}
   #scoutPlacing{display:flex;gap:6px;align-items:center;padding:2px 4px;flex-wrap:wrap}
   #scoutHint{font-size:12.5px;color:var(--ink-2);flex:1;min-width:150px;line-height:1.3}
@@ -370,6 +400,7 @@
     #legend{top:calc(56px + var(--sat)) !important}
     #toast{top:calc(58px + var(--sat))}
     #scoutBar{bottom:calc(46px + var(--sab));left:8px;right:8px;transform:none;max-width:none}
+    #trackBar,#offSheet{bottom:calc(46px + var(--sab));left:8px;right:8px;transform:none;width:auto}
     body.sheet-open #scoutBar{display:none}
     body.scout-open .leaflet-bottom{transform:translateY(calc(-1 * var(--sbh, 70px)))}
     body.scout-open .leaflet-bottom.leaflet-right, body.draw-open .leaflet-bottom.leaflet-right{right:calc(52px + var(--sar))}
@@ -424,6 +455,7 @@
       <div class="stack">
         <select id="basemap">
           <option value="esriImg">Aerial imagery (Esri, high-res)</option>
+          <option value="naip">Aerial imagery (USGS NAIP, works offline)</option>
           <option value="usgsImg">Aerial imagery (USGS)</option>
           <option value="usgsTopo">USGS Topo</option>
           <option value="osm">Street map (OpenStreetMap)</option>
@@ -547,6 +579,13 @@
           <input type="text" id="parcelUrl" placeholder="https://…/arcgis/rest/services/…/MapServer" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
       </details>
       <div class="sync-status" id="parcelStatus"></div>
+    </details>
+
+    <details>
+      <summary>Offline areas</summary>
+      <p class="note">Save an area — aerial photo, terrain, lidar treeshade and the overlays you have on — so it works with no signal.</p>
+      <div class="btn-row"><button class="btn small primary" id="offNew">Save an area…</button></div>
+      <div id="offList"></div>
     </details>
 
     <details>
@@ -777,6 +816,39 @@
   </div>
 </div>
 
+<div id="offSheet" class="glass" hidden>
+  <div id="offSetup">
+    <div class="off-head"><b>Save area for offline</b><span class="note" style="margin:0">Move/zoom the map to fit the dashed box</span></div>
+    <input type="text" id="offName" maxlength="40" placeholder="Name (e.g. North 40)">
+    <div class="off-opts">
+      <label><input type="checkbox" id="offAerial" checked> Aerial photo</label>
+      <label><input type="checkbox" id="offTerrain" checked> Terrain</label>
+      <label><input type="checkbox" id="offTrees" checked> Treeshade</label>
+      <label><input type="checkbox" id="offLayers" checked> Overlays on now</label>
+      <label>Detail <select id="offZoom"><option value="17">Good</option><option value="18" selected>Sharp</option><option value="19">Sharpest</option></select></label>
+    </div>
+    <div class="off-est" id="offEst"></div>
+    <div class="btn-row"><button class="btn small primary" id="offGo">Download</button><button class="btn small" id="offCancel0" onclick="document.getElementById('offCancel').click()">Cancel</button></div>
+  </div>
+  <div id="offRun" hidden>
+    <div class="off-head"><b id="offRunTitle">Saving…</b></div>
+    <div class="off-bar"><div id="offProg"></div></div>
+    <div class="off-est" id="offProgText">Starting…</div>
+    <div class="btn-row"><button class="btn small" id="offCancel">Stop</button></div>
+  </div>
+</div>
+
+<div id="trackBar" class="glass" hidden>
+  <div class="tk-top"><span class="tk-rec" id="tkRec">● Recording</span><span id="tkStats">0 yd · 0:00</span><span id="tkAcc" class="tk-acc"></span><button class="tk-x" id="tkDiscard" aria-label="Discard track" title="Discard track">🗑</button></div>
+  <div class="tk-btns">
+    <button class="btn tk-blood" id="tkBlood">🩸 Blood</button>
+    <button class="btn small" id="tkPocket">🔒 Pocket</button>
+    <button class="btn small" id="tkPause">Pause</button>
+    <button class="btn small primary" id="tkStop">Stop &amp; save</button>
+  </div>
+</div>
+<div id="pocketLock" hidden><div class="pl-in"><div class="pl-rec">● Tracking</div><div id="plStats"></div><div class="pl-hint">Screen locked against pocket taps<br>Press and hold anywhere to unlock</div></div></div>
+
 <div id="photoView" hidden><img id="photoImg" alt=""><button class="x-btn" id="photoClose" aria-label="Close">✕</button></div>
 <input type="file" id="photoInput" accept="image/*" hidden>
 
@@ -945,6 +1017,7 @@ const BASEMAPS = {
   esriImg: { url: ESRI + 'World_Imagery/MapServer/tile/{z}/{y}/{x}', maxNativeZoom: 19, attribution: 'Imagery © Esri, Maxar, Earthstar Geographics', short: 'Imagery: Esri, Maxar, Earthstar Geographics' },
   usgsImg: { url: USGS + 'USGSImageryOnly/MapServer/tile/{z}/{y}/{x}', maxNativeZoom: 16, attribution: 'USGS The National Map', short: 'Imagery: USGS The National Map' },
   usgsTopo: { url: USGS + 'USGSTopo/MapServer/tile/{z}/{y}/{x}', maxNativeZoom: 16, attribution: 'USGS The National Map', short: 'Base: USGS Topo' },
+  naip: { custom: true, maxNativeZoom: 19, attribution: 'USGS The National Map: NAIP Plus imagery', short: 'Imagery: USGS NAIP' },
   osm: { url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', maxNativeZoom: 19, attribution: '© OpenStreetMap contributors', short: 'Base: © OpenStreetMap contributors' },
   none: null,
 };
@@ -953,8 +1026,14 @@ function setBase(k) {
   baseKey = k;
   if (baseLayer) map.removeLayer(baseLayer);
   const b = BASEMAPS[k];
-  baseLayer = b ? L.tileLayer(b.url, { maxNativeZoom: b.maxNativeZoom, maxZoom: 21, attribution: b.attribution, crossOrigin: 'anonymous' }).addTo(map) : null;
+  baseLayer = !b ? null : (b.custom ? makeNaipLayer() : L.tileLayer(b.url, { maxNativeZoom: b.maxNativeZoom, maxZoom: 21, attribution: b.attribution, crossOrigin: 'anonymous' })).addTo(map);
 }
+// USGS NAIP Plus (0.3–0.6 m, public domain) drawn as 256-px tiles from the image service
+const NAIP_URL = 'https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer/exportImage';
+const NaipLayer = L.TileLayer.extend({
+  getTileUrl(c) { return NAIP_URL + '?' + new URLSearchParams({ bbox: tileBBox(c.x, c.y, c.z, 0).map(v => v.toFixed(2)).join(','), bboxSR: 3857, imageSR: 3857, size: '256,256', format: 'jpgpng', compressionQuality: 80, f: 'image' }); },
+});
+function makeNaipLayer() { return new NaipLayer('', { maxNativeZoom: 19, maxZoom: 21, minZoom: 5, attribution: BASEMAPS.naip.attribution, crossOrigin: 'anonymous' }); }
 const LABEL_URLS = [ESRI + 'Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', ESRI + 'Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'];
 const labelLayers = L.layerGroup(LABEL_URLS.map(u => L.tileLayer(u, { pane: 'labels', maxNativeZoom: 19, maxZoom: 21 })));
 
@@ -968,14 +1047,17 @@ function tileBBox(x, y, z, buf) {
 function tileCenterLat(y, z) { const n = Math.PI * (1 - 2 * (y + 0.5) / Math.pow(2, z)); return Math.atan(Math.sinh(n)) / DEG; }
 
 let useCompression = true;
-async function fetchDem(c, signal) {
+function demUrl(c) {
   const params = {
     bbox: tileBBox(c.x, c.y, c.z, BUF).join(','), bboxSR: 3857, imageSR: 3857,
     size: NPX + ',' + NPX, format: 'tiff', pixelType: 'F32', noData: -9999,
     interpolation: 'RSP_BilinearInterpolation', renderingRule: JSON.stringify({ rasterFunction: 'None' }), f: 'image',
   };
   if (useCompression) params.compression = 'LZ77';
-  const res = await fetch(DEM_URL + '/exportImage?' + new URLSearchParams(params), { signal });
+  return DEM_URL + '/exportImage?' + new URLSearchParams(params);
+}
+async function fetchDem(c, signal) {
+  const res = await fetch(demUrl(c), { signal });
   if (!res.ok) throw new Error('HTTP ' + res.status);
   const buf = await res.arrayBuffer();
   const head = new Uint8Array(buf, 0, Math.min(4, buf.byteLength));
@@ -1339,20 +1421,20 @@ try { window.caches && caches.delete('tv-canopy-v2'); } catch (e) {}   // tiles 
 async function chmCacheGet(r) {
   try {
     if (!window.caches || !isSecureContext) return null;
-    const res = await (await caches.open(CHM_CACHE)).match(chmKey(r)); if (!res) return null;
+    const res = await caches.match(chmKey(r)); if (!res) return null;
     const q = new Uint8Array(await res.arrayBuffer()); if (q.length !== r.w * r.h) return null;
     const chm = new Float32Array(q.length); for (let i = 0; i < q.length; i++) chm[i] = q[i] * 0.2;
     return { chm, source: res.headers.get('x-src') || '', year: +res.headers.get('x-year') || 0 };
   } catch (e) { return null; }
 }
 let chmPuts = 0;
-async function chmCachePut(r, L) {
+async function chmCachePut(r, L, into) {
   try {
     if (!window.caches || !isSecureContext) return;
     const q = new Uint8Array(L.chm.length); for (let i = 0; i < q.length; i++) { const v = Math.round(L.chm[i] / 0.2); q[i] = v > 255 ? 255 : v < 0 ? 0 : v; }
-    const c = await caches.open(CHM_CACHE);
+    const c = await caches.open(into || CHM_CACHE);
     await c.put(chmKey(r), new Response(q, { headers: { 'x-src': L.source, 'x-year': String(L.year || '') } }));
-    if (++chmPuts % 25 === 0) { const ks = await c.keys(); for (let i = 0; i < ks.length - 800; i++) await c.delete(ks[i]); }   // ~65 MB max
+    if (!into && ++chmPuts % 25 === 0) { const ks = await c.keys(); for (let i = 0; i < ks.length - 800; i++) await c.delete(ks[i]); }   // ~65 MB max
   } catch (e) { /* storage full or private mode: just skip caching */ }
 }
 
@@ -2899,8 +2981,11 @@ const CATS = {
   shed:     { name: 'Shed antler', short: 'Shed', emoji: '🦴', color: '#bfa76f', geom: 'point', group: 'sign' },
   harvest:  { name: 'Harvest', short: 'Harvest', emoji: '🏆', color: '#b8860b', geom: 'point', group: 'sight' },
   note:     { name: 'Note', short: 'Note', emoji: '📝', color: '#5b5b60', geom: 'point', group: 'other' },
+  camp:     { name: 'Camp', short: 'Camp', emoji: '⛺', color: '#5d7a3a', geom: 'point', group: 'setup' },
+  blood:    { name: 'Blood sign', short: 'Blood', emoji: '🩸', color: '#b00020', geom: 'point', group: 'sight' },
+  track:    { name: 'GPS track', short: 'Track', emoji: '👣', color: '#d81b60', geom: 'line', group: 'other' },
 };
-const CAT_ORDER = ['sighting', 'route', 'rub', 'scrape', 'trail', 'bed', 'water', 'food', 'foodarea', 'funnel', 'stand', 'camera', 'access', 'parking', 'tracks', 'shed', 'harvest', 'sanct', 'note'];
+const CAT_ORDER = ['sighting', 'route', 'rub', 'scrape', 'trail', 'bed', 'water', 'food', 'foodarea', 'funnel', 'stand', 'camera', 'access', 'parking', 'camp', 'tracks', 'shed', 'harvest', 'blood', 'sanct', 'note'];
 const DIRS8 = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 const dir8 = deg => DIRS8[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
@@ -3218,8 +3303,10 @@ function newHuntAnn(cat, kind) {
 
 /* ---------- scout bar (placing pins) ---------- */
 function buildScoutChips() {
-  $('scoutChips').innerHTML = CAT_ORDER.map(k => { const c = CATS[k]; return `<button class="chip" data-cat="${k}" style="--c:${c.color}"><span class="e">${c.emoji}</span>${c.short}</button>`; }).join('');
-  $('scoutChips').querySelectorAll('.chip').forEach(b => b.addEventListener('click', () => startPlace(b.dataset.cat)));
+  $('scoutChips').innerHTML = `<button class="chip track-chip" id="trackChip" style="--c:#d81b60"><span class="e">⏺</span>Track</button>` +
+    CAT_ORDER.map(k => { const c = CATS[k]; return `<button class="chip" data-cat="${k}" style="--c:${c.color}"><span class="e">${c.emoji}</span>${c.short}</button>`; }).join('');
+  $('scoutChips').querySelectorAll('.chip[data-cat]').forEach(b => b.addEventListener('click', () => startPlace(b.dataset.cat)));
+  $('trackChip').addEventListener('click', () => (window.startTrack ? startTrack() : null));
 }
 function openScout(open) {
   $('scoutBar').hidden = !open; $('scoutBtn').classList.toggle('on', open);
@@ -3784,7 +3871,319 @@ initSnap(); refreshCones();
 try { const w = JSON.parse(store.get('tv_wx') || 'null'); if (w && Date.now() - w.fetched < 6 * 3600000) { HUNT.wx = w; HUNT.day = todayIdx(w); afterWx(); } } catch (e) {}
 setTimeout(maybeRefreshWx, 1200);
 setSyncStatus(syncSummary()); scheduleSync(2000);
-window.__tv = { CHM, LIDAR, terrain, fetchLidarSurface, map, ann, exportPlan, composeMap, buildPdf, openExport, S, loc, HUNT, CATS, syncNow, findLayer, huntLayers, windAt, land, SYNC, dirty: () => dirty, tomb: () => tomb, applyRemote, idb };
+/* =====================================================================
+   OFFLINE AREAS — save a chosen area (aerial photo, terrain, treeshade, overlays) for use with no signal
+   ===================================================================== */
+const OFF = { list: [], job: null, sw: 'unknown' };
+try { OFF.list = JSON.parse(store.get('tv_packs') || '[]'); } catch (e) { OFF.list = []; }
+const saveOffList = () => store.set('tv_packs', JSON.stringify(OFF.list));
+// map sources whose terms don't allow bulk downloading — skipped in offline areas
+const NO_BULK = /arcgisonline\.com|openstreetmap\.org|arcgis\.com\/.*World_/i;
+
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  // only register when sw.js is really there (otherwise GitHub Pages answers with an error page)
+  fetch('sw.js', { method: 'HEAD', cache: 'no-store' })
+    .then(r => { if (!r.ok || !/javascript/i.test(r.headers.get('content-type') || '')) throw new Error('no sw.js'); return navigator.serviceWorker.register('sw.js'); })
+    .then(() => { OFF.sw = 'ok'; renderOffList(); })
+    .catch(() => { OFF.sw = navigator.onLine ? 'missing' : 'ok'; renderOffList(); });
+} else OFF.sw = location.protocol === 'https:' ? 'unsupported' : 'local';
+
+function tilesIn(b, z) {
+  const a = map.project(b.getNorthWest(), z).divideBy(TILE).floor(), c = map.project(b.getSouthEast(), z).divideBy(TILE).floor(), n = Math.pow(2, z), out = [];
+  for (let y = Math.max(0, a.y); y <= Math.min(n - 1, c.y); y++) for (let x = a.x; x <= c.x; x++) out.push({ x: ((x % n) + n) % n, y, z });
+  return out;
+}
+function tileUrlFor(layer, c) {
+  const saved = layer._tileZoom; layer._tileZoom = c.z;
+  try { return layer.getTileUrl(Object.assign(L.point(c.x, c.y), { z: c.z })); } finally { layer._tileZoom = saved; }
+}
+// everything the area needs, as a list of jobs
+function planOffline(b, opt) {
+  const req = [], seen = new Set(), skipped = new Set();
+  const add = (url, cors, kind) => { if (url && !seen.has(url)) { seen.add(url); req.push({ url, cors, kind }); } };
+  const Z0 = 11;
+  if (opt.aerial) {
+    const naip = makeNaipLayer();
+    for (let z = Z0; z <= opt.zMax; z++) for (const c of tilesIn(b, z)) add(naip.getTileUrl(c), true, 'aerial');
+  }
+  if (opt.layers) {
+    const layers = [];
+    map.eachLayer(l => { if (l instanceof L.TileLayer && l !== baseLayer && !(l instanceof TerrainLayer)) layers.push(l); });
+    if (baseLayer && baseKey !== 'naip') layers.push(baseLayer);
+    for (const l of layers) {
+      const tmpl = l._url || '';
+      if (NO_BULK.test(tmpl)) { skipped.add(l === baseLayer ? (BASEMAPS[baseKey] || {}).short || 'base map' : 'labels'); continue; }
+      const zMax = Math.min(opt.zMax, l.options.maxNativeZoom || 18);
+      for (let z = Math.max(Z0, l.options.minZoom || 0); z <= zMax; z++) for (const c of tilesIn(b, z)) {
+        let u; try { u = tileUrlFor(l, c); } catch (e) { u = null; }
+        add(u, !!l.options.crossOrigin, 'overlay');
+      }
+    }
+  }
+  const dem = [], chm = [];
+  if (opt.terrain) for (let z = Z0; z <= 17; z++) for (const c of tilesIn(b, z)) { add(demUrl(c), true, 'terrain'); if (opt.trees && z >= LIDAR.minZoom) chm.push(c); }
+  return { req, chm, skipped: [...skipped] };
+}
+function offEstimate(p) {
+  let mb = 0;
+  for (const r of p.req) mb += r.kind === 'terrain' ? 0.12 : r.kind === 'aerial' ? 0.03 : 0.012;
+  const down = mb + p.chm.length * (0.6 + 2.4 * (p.chm.filter(c => c.z === 17).length / Math.max(1, p.chm.length)));   // lidar points are large to download
+  return { files: p.req.length + p.chm.length, store: mb + p.chm.length * 0.07, down };
+}
+const fmtMB = mb => mb < 1 ? Math.max(0.1, mb).toFixed(1) + ' MB' : mb < 1000 ? Math.round(mb) + ' MB' : (mb / 1000).toFixed(1) + ' GB';
+
+async function runOffline(pack, plan) {
+  const job = OFF.job = { stop: false, done: 0, total: plan.req.length + plan.chm.length, bytes: 0, fail: 0 };
+  const cache = await caches.open('tv-pack-' + pack.id);
+  try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {}
+  await precacheShell();
+  const show = () => { $('offProg').style.width = (100 * job.done / job.total).toFixed(1) + '%'; $('offProgText').textContent = `Saving ${job.done} / ${job.total} · ${fmtMB(job.bytes / 1e6)}` + (job.fail ? ` · ${job.fail} unavailable` : ''); };
+  let i = 0;
+  const worker = async () => {
+    while (!job.stop && i < plan.req.length) {
+      const r = plan.req[i++];
+      try {
+        if (!(await cache.match(r.url))) {
+          let res;
+          try { res = await fetch(r.url, { mode: r.cors ? 'cors' : 'no-cors' }); }
+          catch (e) { if (!r.cors) throw e; res = null; }
+          if (res && (res.ok || res.type === 'opaque')) { const blob = await res.clone().blob(); job.bytes += blob.size; await cache.put(r.url, res); }
+          else job.fail++;
+        }
+      } catch (e) { job.fail++; }
+      job.done++; if (job.done % 5 === 0) show();
+    }
+  };
+  await Promise.all([worker(), worker(), worker(), worker(), worker(), worker()]);
+  // treeshade: process the lidar for each tile now and keep only the finished canopy (small)
+  for (const c of plan.chm) {
+    if (job.stop) break;
+    try {
+      const key = chmKey(c);
+      if (!(await cache.match(key))) {
+        const r = await fetchDem(c);
+        let L2 = await chmCacheGet(r);
+        if (!L2) L2 = await fetchLidarSurface(r);
+        if (L2) { await chmCachePut(r, L2, 'tv-pack-' + pack.id); job.bytes += 70000; } else job.fail++;
+      }
+    } catch (e) { job.fail++; }
+    job.done++; show();
+  }
+  show();
+  pack.files = job.done; pack.mb = Math.round(job.bytes / 1e5) / 10; pack.saved = Date.now(); pack.partial = job.stop || job.fail > job.total * 0.2;
+  if (!OFF.list.includes(pack)) OFF.list.unshift(pack);
+  saveOffList(); OFF.job = null; renderOffList();
+  return job;
+}
+async function precacheShell() {
+  try {
+    const c = await caches.open('tv-shell-v1'), page = location.origin + location.pathname;
+    const urls = [page, ...[...document.scripts].map(s => s.src).filter(Boolean), ...[...document.querySelectorAll('link[rel=stylesheet]')].map(l => l.href),
+      'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png', 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png', 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png'];
+    await Promise.all(urls.map(async u => { try { if (!(await c.match(u))) { const r = await fetch(u, { cache: 'reload' }); if (r.ok) await c.put(u, r); } } catch (e) {} }));
+  } catch (e) {}
+}
+
+/* ---------- UI ---------- */
+let offFrame = null;
+// the part of the map not covered by the offline sheet
+function offBounds() {
+  const sz = map.getSize(), mr = map.getContainer().getBoundingClientRect(), sh = $('offSheet');
+  const bottom = sh.hidden ? sz.y - 12 : Math.min(sz.y - 12, sh.getBoundingClientRect().top - mr.top - 10);
+  const top = Math.min(70, sz.y * 0.08), m = 12;
+  return L.latLngBounds(map.containerPointToLatLng([m, Math.max(top + 40, bottom)]), map.containerPointToLatLng([sz.x - m, top]));
+}
+function openOffSheet() {
+  if (!window.caches) { msg('This browser can’t save maps for offline use.', true); return; }
+  if (isMobile()) setPanel(false);
+  $('offSheet').hidden = false; $('offRun').hidden = true; $('offSetup').hidden = false;
+  const b = offBounds();
+  offFrame = L.rectangle(b, { color: '#2f6f5e', weight: 2, dashArray: '6 5', fill: true, fillOpacity: 0.06, interactive: false }).addTo(map);
+  $('offName').value = 'Area ' + (OFF.list.length + 1);
+  $('offAerial').checked = $('offTerrain').checked = true; $('offTrees').checked = true; $('offLayers').checked = true;
+  updateOffEstimate();
+}
+function closeOffSheet() {
+  if (OFF.job) { OFF.job.stop = true; return; }
+  $('offCancel').textContent = 'Stop';
+  $('offSheet').hidden = true; if (offFrame) { map.removeLayer(offFrame); offFrame = null; }
+}
+function offOpts() { return { aerial: $('offAerial').checked, terrain: $('offTerrain').checked, trees: $('offTrees').checked && $('offTerrain').checked, layers: $('offLayers').checked, zMax: +$('offZoom').value }; }
+function updateOffEstimate() {
+  if (!offFrame) return;
+  const b = offBounds(); offFrame.setBounds(b);
+  const p = planOffline(b, offOpts()), e = offEstimate(p), km2 = (b.getNorth() - b.getSouth()) * 111.3 * (b.getEast() - b.getWest()) * 111.3 * Math.cos(b.getCenter().lat * DEG);
+  const big = e.files > 9000;
+  $('offEst').innerHTML = `${(km2 / 2.59).toFixed(km2 < 2.59 ? 2 : 1)} sq mi · about <b>${fmtMB(e.store)}</b> on the phone` +
+    (p.chm.length ? `, ~${fmtMB(e.down)} to download (lidar is big — Wi-Fi recommended)` : '') +
+    (p.skipped.length ? `<br><span style="color:var(--ink-3)">Not included (their terms don’t allow offline saving): ${p.skipped.join(', ')}. NAIP aerial photo is used instead.</span>` : '') +
+    (big ? '<br><b style="color:#c0392b">That’s a lot — zoom in to a smaller area.</b>' : '');
+  $('offGo').disabled = big || !e.files;
+}
+map.on('moveend', () => { if (offFrame && !OFF.job) updateOffEstimate(); });
+async function startOffline(existing) {
+  const b = existing ? L.latLngBounds(existing.b) : offBounds();
+  const opt = existing ? existing.opt : offOpts();
+  const pack = existing || { id: uid().slice(0, 8), name: ($('offName').value || 'Offline area').slice(0, 40), b: [[b.getSouth(), b.getWest()], [b.getNorth(), b.getEast()]], opt };
+  if (existing) { if (isMobile()) setPanel(false); $('offSheet').hidden = false; }
+  $('offSetup').hidden = true; $('offRun').hidden = false; $('offRunTitle').textContent = (existing ? 'Updating ' : 'Saving ') + pack.name;
+  const plan = planOffline(b, opt);
+  const job = await runOffline(pack, plan);
+  $('offProgText').textContent = job.stop ? `Stopped — ${job.done} of ${job.total} saved. Tap Update later to finish.` :
+    `Done · ${fmtMB(job.bytes / 1e6)} saved` + (job.fail ? ` · ${job.fail} pieces unavailable (no data there)` : '') + '. This area now works with no signal.';
+  $('offCancel').textContent = 'Close'; if (offFrame) { map.removeLayer(offFrame); offFrame = null; }
+}
+function renderOffList() {
+  const box = $('offList'); if (!box) return;
+  const warn = OFF.sw === 'missing' ? '<p class="note" style="color:#c0392b">Add <b>sw.js</b> to your GitHub repo next to index.html, so the app itself opens without signal.</p>'
+    : OFF.sw === 'local' ? '<p class="note">Offline areas need the app opened from its https address (GitHub Pages).</p>' : '';
+  box.innerHTML = warn + (OFF.list.length ? OFF.list.map(p => `<div class="off-item" data-id="${p.id}">
+      <div class="oi-main"><b>${esc(p.name)}</b><span>${fmtMB(p.mb || 0)} · ${new Date(p.saved).toLocaleDateString([], { month: 'short', day: 'numeric' })}${p.partial ? ' · incomplete' : ''}</span></div>
+      <button class="btn small" data-act="go">View</button><button class="btn small" data-act="upd">Update</button><button class="btn small" data-act="del" aria-label="Delete">✕</button></div>`).join('')
+    : '<p class="note" style="margin:4px 0">No saved areas yet.</p>');
+  box.querySelectorAll('.off-item button').forEach(bt => bt.addEventListener('click', async () => {
+    const p = OFF.list.find(x => x.id === bt.closest('.off-item').dataset.id); if (!p) return;
+    if (bt.dataset.act === 'go') { map.fitBounds(p.b); if (isMobile()) setPanel(false); }
+    else if (bt.dataset.act === 'upd') { if (OFF.job) return msg('Already saving an area.'); startOffline(p); }
+    else if (confirm(`Delete the offline copy of “${p.name}”? (${fmtMB(p.mb || 0)})`)) {
+      await caches.delete('tv-pack-' + p.id); OFF.list = OFF.list.filter(x => x !== p); saveOffList(); renderOffList(); msg('Offline area deleted');
+    }
+  }));
+}
+$('offNew').addEventListener('click', openOffSheet);
+$('offGo').addEventListener('click', () => startOffline());
+$('offCancel').addEventListener('click', closeOffSheet);
+['offAerial', 'offTerrain', 'offTrees', 'offLayers', 'offZoom'].forEach(id => $(id).addEventListener('change', updateOffEstimate));
+renderOffList();
+// no signal: switch away from map sources that can't be saved offline
+function offlineBase() { if (!navigator.onLine && (baseKey === 'esriImg' || baseKey === 'osm') && OFF.list.length) { setBase('naip'); const s = $('basemap'); if (s) s.value = 'naip'; msg('No signal — showing your saved NAIP aerial photo'); } }
+window.addEventListener('offline', offlineBase); setTimeout(offlineBase, 500);
+
+/* =====================================================================
+   TRACK — record your path (blood trail, walking a property) hands-free
+   ===================================================================== */
+const TRACK = { on: false, paused: false, pts: [], marks: [], start: 0, active: 0, resumedAt: 0, watch: null, line: null, wake: null, last: null };
+const tll = p => L.latLng(p[0], p[1]);
+const trackDist = () => { let d = 0; for (let i = 1; i < TRACK.pts.length; i++) d += tll(TRACK.pts[i - 1]).distanceTo(tll(TRACK.pts[i])); return d; };
+const fmtDur = ms => { const m = Math.floor(ms / 60000), h = Math.floor(m / 60); return h ? `${h}:${String(m % 60).padStart(2, '0')} h` : `${m}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}`; };
+const trackYd = d => d < 1609 ? Math.round(d * 1.0936) + ' yd' : (d / 1609.34).toFixed(2) + ' mi';
+function trackElapsed() { return TRACK.active + (TRACK.on && !TRACK.paused && TRACK.resumedAt ? Date.now() - TRACK.resumedAt : 0); }
+function persistTrack() {
+  try { store.set('tv_track', JSON.stringify({ pts: TRACK.pts, marks: TRACK.marks, start: TRACK.start, active: trackElapsed() })); } catch (e) {}
+}
+function drawTrack() {
+  const ll = TRACK.pts.map(p => [p[0], p[1]]);
+  if (!TRACK.line) TRACK.line = L.polyline(ll, { color: '#d81b60', weight: 4, opacity: 0.9, interactive: false }).addTo(map);
+  else TRACK.line.setLatLngs(ll);
+}
+function renderTrackBar() {
+  const d = trackDist();
+  $('tkStats').textContent = `${trackYd(d)} · ${fmtDur(trackElapsed())}` + (TRACK.marks.length ? ` · 🩸 ${TRACK.marks.length}` : '');
+  $('tkRec').textContent = TRACK.paused ? '❚❚ Paused' : '● Recording';
+  $('tkRec').classList.toggle('paused', TRACK.paused);
+  $('tkPause').textContent = TRACK.paused ? 'Resume' : 'Pause';
+  $('plStats').textContent = $('tkStats').textContent;
+}
+async function wakeOn() {
+  try { if ('wakeLock' in navigator && !TRACK.wake) { TRACK.wake = await navigator.wakeLock.request('screen'); TRACK.wake.addEventListener('release', () => { TRACK.wake = null; }); } } catch (e) {}
+}
+function wakeOff() { try { TRACK.wake && TRACK.wake.release(); } catch (e) {} TRACK.wake = null; }
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && TRACK.on && !TRACK.paused) { wakeOn(); if (TRACK.hiddenAt && Date.now() - TRACK.hiddenAt > 15000) msg('Tracking paused while the phone was locked — keep the app open (use 🔒 Pocket) for an unbroken track.', false, 8000); }
+  if (document.visibilityState === 'hidden') TRACK.hiddenAt = Date.now();
+});
+function onTrackPos(p) {
+  onPos(p);                                                          // keep the blue dot moving
+  const c = p.coords, acc = c.accuracy || 99, now = p.timestamp || Date.now();
+  $('tkAcc').textContent = '±' + Math.round(acc * 1.0936) + ' yd';
+  if (TRACK.paused) return;
+  const prev = TRACK.pts[TRACK.pts.length - 1];
+  if (acc > (prev ? 30 : 50)) return;                                // too fuzzy to trust
+  if (prev) {
+    const d = tll(prev).distanceTo([c.latitude, c.longitude]), dt = (now - prev[2]) / 1000;
+    if (d < Math.max(3, acc * 0.4) && dt < 30) return;               // standing still / GPS jitter
+    if (dt > 0 && d / dt > 6 && d > 25) return;                      // jump faster than a person moves
+  }
+  TRACK.pts.push([c.latitude, c.longitude, now, Math.round(acc)]);
+  drawTrack(); renderTrackBar(); persistTrack();
+}
+function trackError(err) { if (err.code === 1) { msg('Location is blocked — tracking needs location permission.', true, 9000); pauseTrack(true); } }
+function startWatch() {
+  if (TRACK.watch != null) return;
+  TRACK.watch = navigator.geolocation.watchPosition(onTrackPos, trackError, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
+  loc.follow = true; setLocBtn('follow');
+}
+function stopWatch() { if (TRACK.watch != null) navigator.geolocation.clearWatch(TRACK.watch); TRACK.watch = null; }
+function startTrack() {
+  if (!('geolocation' in navigator) || !window.isSecureContext) { msg('Tracking needs location, which only works from the app’s https address.', true, 9000); return; }
+  if (!$('scoutBar').hidden) openScout(false);
+  Object.assign(TRACK, { on: true, paused: false, pts: [], marks: [], start: Date.now(), active: 0, resumedAt: Date.now() });
+  $('trackBar').hidden = false; document.body.classList.add('tracking');
+  startWatch(); wakeOn(); drawTrack(); renderTrackBar(); persistTrack();
+  TRACK.tick = setInterval(renderTrackBar, 1000);
+  msg('Tracking — your path is drawn as you walk. Tap 🩸 to mark blood without stopping.', false, 6000);
+}
+function pauseTrack(force) {
+  if (!TRACK.on) return;
+  if (TRACK.paused && !force) { TRACK.paused = false; TRACK.resumedAt = Date.now(); startWatch(); wakeOn(); }
+  else { TRACK.active = trackElapsed(); TRACK.paused = true; TRACK.resumedAt = 0; stopWatch(); wakeOff(); }
+  renderTrackBar(); persistTrack();
+}
+function markBlood() {
+  const p = loc.last; if (!p || Date.now() - (p.timestamp || 0) > 60000) { msg('Waiting for GPS — try again in a moment.', false, 4000); return; }
+  const ll = L.latLng(p.coords.latitude, p.coords.longitude), m = L.marker(ll);
+  m.ann = newHuntAnn('blood', 'point'); m.ann.gpsAcc = Math.round(p.coords.accuracy); m.ann.label = '🩸 ' + (TRACK.marks.length + 1);
+  ann.addLayer(m); wireLayer(m); applyStyle(m); saveAnn();
+  TRACK.marks.push(m.ann.id); renderTrackBar(); persistTrack();
+  try { navigator.vibrate && navigator.vibrate(60); } catch (e) {}
+  msg(`🩸 Blood #${TRACK.marks.length} marked`, false, 2500);
+}
+function stopTrack(save = true) {
+  if (!TRACK.on) return;
+  const dur = trackElapsed(), dist = trackDist();
+  stopWatch(); wakeOff(); clearInterval(TRACK.tick);
+  if (TRACK.line) { map.removeLayer(TRACK.line); TRACK.line = null; }
+  let layer = null;
+  if (save && TRACK.pts.length >= 2) {
+    // thin out points that add nothing (within ~1.5 m of the line) so long tracks stay small and sync fine
+    const Z = 20, px = TRACK.pts.map(p => map.project([p[0], p[1]], Z)), keep = L.LineUtil.simplify(px, 12).map(q => map.unproject(q, Z));
+    layer = L.polyline(keep);
+    const t0 = new Date(TRACK.pts[0][2]), t1 = new Date(TRACK.pts[TRACK.pts.length - 1][2]);
+    layer.ann = newHuntAnn('track', 'line');
+    layer.ann.label = 'Track ' + fmtDT(t0);
+    layer.ann.when = localIso(t0);
+    layer.ann.notes = `${trackYd(dist)} in ${fmtDur(dur)} (${fmtTime(t0)}–${fmtTime(t1)})` + (TRACK.marks.length ? ` · ${TRACK.marks.length} blood marks` : '');
+    ann.addLayer(layer); wireLayer(layer); applyStyle(layer); saveAnn();
+  }
+  Object.assign(TRACK, { on: false, paused: false, pts: [], marks: [], active: 0, resumedAt: 0 });
+  store.set('tv_track', '');
+  $('trackBar').hidden = true; $('pocketLock').hidden = true; document.body.classList.remove('tracking');
+  if (layer) { msg(`Track saved: ${trackYd(dist)}`, false, 5000); setTimeout(() => select(layer), 0); }
+  else if (save) msg('Track too short to save', false, 4000);
+}
+// pocket lock: black screen that ignores touches, keeps the screen awake for GPS
+let plTimer = null;
+function pocketOn() { $('pocketLock').hidden = false; renderTrackBar(); wakeOn(); }
+$('pocketLock').addEventListener('pointerdown', e => { e.preventDefault(); $('pocketLock').classList.add('holding'); plTimer = setTimeout(() => { $('pocketLock').hidden = true; $('pocketLock').classList.remove('holding'); }, 1200); });
+['pointerup', 'pointercancel', 'pointerleave'].forEach(t => $('pocketLock').addEventListener(t, () => { clearTimeout(plTimer); $('pocketLock').classList.remove('holding'); }));
+$('pocketLock').addEventListener('contextmenu', e => e.preventDefault());
+$('tkBlood').addEventListener('click', markBlood);
+$('tkPause').addEventListener('click', () => pauseTrack());
+$('tkPocket').addEventListener('click', pocketOn);
+$('tkStop').addEventListener('click', () => { if (TRACK.pts.length < 2 && !confirm('Nothing recorded yet. Stop anyway?')) return; stopTrack(true); });
+$('tkDiscard').addEventListener('click', () => { if (confirm('Throw away this track? Blood marks stay.')) stopTrack(false); });
+// a track that was running when the page closed comes back paused
+(() => {
+  let t = null; try { t = JSON.parse(store.get('tv_track') || 'null'); } catch (e) {}
+  if (!t || !t.pts) return;
+  Object.assign(TRACK, { on: true, paused: true, pts: t.pts, marks: t.marks || [], start: t.start, active: t.active || 0, resumedAt: 0 });
+  $('trackBar').hidden = false; document.body.classList.add('tracking'); drawTrack(); renderTrackBar();
+  TRACK.tick = setInterval(renderTrackBar, 1000);
+  msg('Your track is still here (paused). Tap Resume to keep going.', false, 7000);
+})();
+
+window.startTrack = startTrack;
+window.__tv = { CHM, LIDAR, terrain, fetchLidarSurface, map, ann, exportPlan, composeMap, buildPdf, openExport, S, loc, HUNT, CATS, syncNow, findLayer, huntLayers, windAt, land, SYNC, dirty: () => dirty, tomb: () => tomb, applyRemote, idb, OFF, TRACK, planOffline };
 })();
 </script>
 </body>
